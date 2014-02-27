@@ -1,0 +1,30 @@
+<?xml version="1.0" ?>
+<node name="/casa/vo/sevice">
+  <interface name="edu.nrao.casa.dVO">
+    <method name="fetch">
+      <!-- input:  vector<string>           = URLs to fetch
+                   bool                     = poll/true or signal
+           output: int                      = observable id
+        -->
+      <arg direction="in"  type="as" name="urls"/>
+      <arg direction="in"  type="b"  name="poll"/>
+      <arg direction="out" type="i"/>
+    </method>
+    <method name="request">
+      <!-- input:  int                      = observable id
+           output: (string,array<string>)   = [some|none|done|error], [result|error|empty]
+        -->
+      <arg direction="in"  type="i" name="id"/>
+      <arg direction="out" type="av"/>
+    </method>
+    <method name="query">
+      <!-- input:  string                   = query term
+                   bool                     = poll/true or signal
+           output: int                      = observable id
+        -->
+      <arg direction="in"  type="s" name="term"/>
+      <arg direction="in"  type="b"  name="poll"/>
+      <arg direction="out" type="i"/>
+    </method>
+  </interface>
+</node>

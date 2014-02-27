@@ -1,0 +1,37 @@
+XMLPATH := $(dir $(lastword $(MAKEFILE_LIST)))../xml
+INCPATH := $(dir $(lastword $(MAKEFILE_LIST)))../include
+DBUSCPPPATH := $(dir $(lastword $(MAKEFILE_LIST)))../dep/dbus-cpp
+DBUSCASAPATH := $(dir $(lastword $(MAKEFILE_LIST)))../dep/casadbus
+vpath %.xml $(XMLPATH)
+
+CXX := @CXX@
+CXXFLAGS := @CXXFLAGS@ -DDBUS_CPP
+CPPFLAGS := @CPPFLAGS@
+LIBS := @LIBS@
+LDFLAGS := @LDFLAGS@
+TAR := @TAR@
+MKDIR := @MKDIR@
+CP := cp -p
+DBUSXML2CPP := @DBUS_XML2CPP@
+
+$(INCPATH)/dvo/%.adaptor.hpp: %.interface.xml
+	@$(MKDIR) $(dir $@)
+	@echo $<
+	$(DBUSXML2CPP) $< --adaptor=$@
+
+$(INCPATH)/dvo/%.proxy.hpp: %.interface.xml
+	@$(MKDIR) $(dir $@)
+	@echo $<
+	$(DBUSXML2CPP) $< --proxy=$@
+
+dbcpp_%.o: $(DBUSCPPPATH)/src/%.cpp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -I$(INCPATH) -c $< -o $@
+
+dbcasa_%.o:  $(DBUSCASAPATH)/utilities/%.cc
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -I$(INCPATH) -c $< -o $@
+
+dbcasa_%.o:  $(DBUSCASAPATH)/session/%.cc
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -I$(INCPATH) -c $< -o $@
+
+%.o: %.cpp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -I$(INCPATH) -c $<
