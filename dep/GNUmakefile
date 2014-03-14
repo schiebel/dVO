@@ -25,6 +25,11 @@ $(INCPATH)/casadbus/session/%.proxy.h: casadbus/xml/%.interface.xml
 	@echo $<
 	$(DBUSXML2CPP) $< --proxy=$@
 
+$(INCPATH)/voc/%.h: voclient/libdalclient/%.h
+	$(MKDIR) $(dir $@)
+	@echo $<
+	$(CP) $< $@
+
 ### casadbus header files that need to be exported...
 CDB_TYPES_HEADERS := variant.h
 CDB_UTIL_HEADERS := BusAccess.h
@@ -33,12 +38,16 @@ CDB_SESSION_HEADERS := DBusSession.h DBusSession.proxy.h Dispatcher.h
 DBCPP_HEADERS := dbus.h types.h api.h message.h error.h interface.h object.h connection.h pendingcall.h \
                  util.h debug.h property.h server.h dispatcher.h eventloop.h eventloop-integration.h \
                  introspection.h pipe.h refptr_impl.h
+### VOClient header files that need to be exported...
+VOC_HEADERS := VOClient.h
 
 DBUS_CASA_HEADERS = $(addprefix $(INCPATH)/casadbus/types/, $(CDB_TYPES_HEADERS)) \
                    $(addprefix $(INCPATH)/casadbus/utilities/, $(CDB_UTIL_HEADERS)) \
                    $(addprefix $(INCPATH)/casadbus/session/, $(CDB_SESSION_HEADERS))
 
 DBUS_CPP_HEADERS = $(addprefix $(INCPATH)/dbus-cpp/, $(DBCPP_HEADERS))
+
+VOCLIENT_HEADERS = $(addprefix $(INCPATH)/voc/, $(VOC_HEADERS))
 
 ###
 ### first time through, files get extracted and checked out, but
@@ -48,7 +57,7 @@ DBUS_CPP_HEADERS = $(addprefix $(INCPATH)/dbus-cpp/, $(DBCPP_HEADERS))
 all: voclient casadbus dbus-cpp 
 	@$(MAKE) includes
 
-includes: $(DBUS_CASA_HEADERS) $(DBUS_CPP_HEADERS)
+includes: $(DBUS_CASA_HEADERS) $(DBUS_CPP_HEADERS) $(VOCLIENT_HEADERS)
 
 ### tar preserves the creation timestamp
 voclient: voclient.tgz

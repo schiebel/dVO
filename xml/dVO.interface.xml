@@ -18,12 +18,24 @@
       <arg direction="out" type="av"/>
     </method>
     <method name="query">
-      <!-- input:  string                   = query term
+      <!-- input:  ra: double               = right ascension, ICRS
+                   dec: double              = declination, ICRS
+                   ra_size: double          = width of region of interest (degrees)
+                   dec_size: double         = height of region of interest (degrees)
+                   format: string           = desired image format(s)
                    bool                     = poll/true or signal
+                   params: map<string,v>    = extra parameters
+                   vos: vector<string>      = vo servers to use
            output: int                      = observable id
         -->
-      <arg direction="in"  type="s" name="term"/>
+      <arg direction="in"  type="d" name="ra"/>
+      <arg direction="in"  type="d" name="dec"/>
+      <arg direction="in"  type="d" name="ra_size"/>
+      <arg direction="in"  type="d" name="dec_size"/>
+      <arg direction="in"  type="s" name="format"/>
       <arg direction="in"  type="b"  name="poll"/>
+      <arg direction="in"  type="a{sv}" name="params"/>
+      <arg direction="in"  type="as" name="vos"/>
       <arg direction="out" type="i"/>
     </method>
   </interface>

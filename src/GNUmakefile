@@ -5,15 +5,19 @@ DBUS_CPP_OBJECTS :=  object.o connection.o dispatcher.o pendingcall.o interface.
 
 DBUS_CASA_OBJECTS :=  BusAccess.o DBusSession.o Dispatcher.o
 
+VOCLIENT_OBJECTS := dalQuery.o dalSIAP.o dalQResp.o dalSCSP.o dalSSAP.o svrHandle.o vocHash.o vocList.o vutUtil.o
+
 OBJECTS := $(addprefix dbcpp_, $(DBUS_CPP_OBJECTS)) \
-           $(addprefix dbcasa_, $(DBUS_CASA_OBJECTS))
+           $(addprefix dbcasa_, $(DBUS_CASA_OBJECTS)) \
+           $(addprefix voc_, $(VOCLIENT_OBJECTS))
 
 all: dVO
 
-dvo_adaptor.o: $(INCPATH)/dvo/dVO.adaptor.hpp $(INCPATH)/dvo/adaptor.hpp
+dvo_adaptor.o: $(INCPATH)/dvo/dVO.adaptor.hpp $(INCPATH)/dvo/adaptor.hpp $(INCPATH)/dvo/libxml2.hpp
 dvo_main.o: $(INCPATH)/dvo/dVO.adaptor.hpp $(INCPATH)/dvo/adaptor.hpp
+dvo_dal.o: $(INCPATH)/dvo/dal.hpp
 
-dVO: dvo_main.o dvo_adaptor.o $(OBJECTS)
+dVO: dvo_main.o dvo_adaptor.o dvo_dal.o $(OBJECTS)
 	$(CXX) -o $@ $(LDFLAGS) $^ $(LIBS)
 
 clean:

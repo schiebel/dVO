@@ -2,8 +2,10 @@ XMLPATH := $(dir $(lastword $(MAKEFILE_LIST)))../xml
 INCPATH := $(dir $(lastword $(MAKEFILE_LIST)))../include
 DBUSCPPPATH := $(dir $(lastword $(MAKEFILE_LIST)))../dep/dbus-cpp
 DBUSCASAPATH := $(dir $(lastword $(MAKEFILE_LIST)))../dep/casadbus
+VOCLIENTPATH := $(dir $(lastword $(MAKEFILE_LIST)))../dep/voclient
 vpath %.xml $(XMLPATH)
 
+CC := @CC@
 CXX := @CXX@
 CXXFLAGS := @CXXFLAGS@ -DDBUS_CPP
 CPPFLAGS := @CPPFLAGS@
@@ -32,6 +34,9 @@ dbcasa_%.o:  $(DBUSCASAPATH)/utilities/%.cc
 
 dbcasa_%.o:  $(DBUSCASAPATH)/session/%.cc
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -I$(INCPATH) -c $< -o $@
+
+voc_%.o:  $(VOCLIENTPATH)/libdalclient/%.c
+	$(CC) $(CPPFLAGS) $(CLAGS) -I$(INCPATH) -DNO_CURL -c $< -o $@
 
 %.o: %.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -I$(INCPATH) -c $<
