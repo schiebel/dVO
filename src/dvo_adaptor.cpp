@@ -69,9 +69,6 @@ namespace dvo {
             // if ( wideString.compare("VOTABLEF") == 0 ) cout << "\t\t\t<yes>" << endl;
             return wideString;
         }
-        extern std::vector<std::wstring> as_wstring(const xmlChar **xmlString) {
-             return std::vector<std::wstring>( );
-        }
 #endif
      }
 
