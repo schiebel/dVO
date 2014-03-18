@@ -1,4 +1,30 @@
+//# dvo_adaptor.cpp:  DBus adaptor for the dVO DBus VO Client
+//# Copyright (C) 2014
+//# Associated Universities, Inc. Washington DC, USA.
+//#
+//# This library is free software; you can redistribute it and/or modify it
+//# under the terms of the GNU Library General Public License as published by
+//# the Free Software Foundation; either version 2 of the License, or (at your
+//# option) any later version.
+//#
+//# This library is distributed in the hope that it will be useful, but WITHOUT
+//# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+//# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Library General Public
+//# License for more details.
+//#
+//# You should have received a copy of the GNU Library General Public License
+//# along with this library; if not, write to the Free Software Foundation,
+//# Inc., 675 Massachusetts Ave, Cambridge, MA 02139, USA.
+//#
+//# Correspondence concerning AIPS++ should be addressed as follows:
+//#        Internet email: aips2-request@nrao.edu.
+//#        Postal address: AIPS++ Project Office
+//#                        National Radio Astronomy Observatory
+//#                        520 Edgemont Road
+//#                        Charlottesville, VA 22903-2475 USA
+//#
 #include <iostream>
+#include <string>
 #include <numeric>
 #include <functional>
 #include <string.h>
@@ -16,6 +42,38 @@ using std::endl;
 constexpr unsigned long dvo::xml2::sax::meta[];
 
 namespace dvo {
+
+     namespace xml2 {
+
+        extern std::string as_string(const xmlChar *xmlString) {
+             return std::string((char*)xmlString);
+        }
+#if 0
+        extern std::wstring as_wstring(const xmlChar *xmlString) {    
+            std::wstring wideString;
+            if ( ! xmlString ) { return wideString; }      /* provided string was null */
+
+            int length = xmlStrlen(xmlString);
+            if (length > 0) {
+                char *origLocale = setlocale(LC_CTYPE, NULL);
+                setlocale(LC_CTYPE, "en_US.UTF-8");
+
+                mbtowc( nullptr, nullptr, 0 );                         /* reset mbtowc */
+                for ( int i=0; i < length; ++i ) {
+                     wchar_t dest;
+                     size_t wlength = mbtowc( &dest, (const char*) &xmlString[i], 1 );
+                     wideString.push_back(dest);
+                }
+                setlocale(LC_CTYPE, origLocale);
+            }
+            // if ( wideString.compare("VOTABLEF") == 0 ) cout << "\t\t\t<yes>" << endl;
+            return wideString;
+        }
+        extern std::vector<std::wstring> as_wstring(const xmlChar **xmlString) {
+             return std::vector<std::wstring>( );
+        }
+#endif
+     }
 
      typedef size_t (curlfunc_t)(void *ptr,size_t,size_t);
 
@@ -71,50 +129,24 @@ namespace dvo {
                             value.c_str() );
                }
           }
-
-          /** SAX2 callback when an element end has been detected by the parser. It provides the namespace informations for the element.
-              ctx:  the user data (XML parser context)
-              localname:  the local name of the element
-              prefix:  the element namespace prefix if available
-              URI:  the element namespace name if available
-          */
-          static void endElementNs( const xmlChar * localname, 
-                                    const xmlChar * prefix, 
-                                    const xmlChar * URI )
-          {
-               printf( "endElementNs: name = '%s' prefix = '%s' uri = '%s'\n", localname, prefix, URI );
-          }
-
-          /** Display and format an error messages, callback.
-              ctx:  an XML parser context
-              msg:  the message to display/transmit
-              ...:  extra parameters for the message display
-          */
-          static void error( std::string msg )
-          { std::cout << msg << std::endl; }
-
-          /** Display and format a warning messages, callback.
-              ctx:  an XML parser context
-              msg:  the message to display/transmit
-              ...:  extra parameters for the message display
-          */
-          static void warning( std::string msg )
-          { std::cout << msg << endl; }
-
      }
-
 
     void fetch_url( std::string url ) {
          CURL *curl = curl_easy_init( );
          curl_easy_setopt(curl,CURLOPT_URL,url.c_str( ));
          curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, pvt::curlfunc);
          int count = 0;
-         // xmlCreatePushParserCtxt	(xmlSAXHandlerPtr sax, void *user_data, const char *chunk, int size, const char *filename)
          xml2::sax sax;
+#if 0
          sax.table.startElementNs = pvt::startElementNs;
-         sax.table.endElementNs = pvt::endElementNs;
-         sax.table.warning = pvt::warning;
-         sax.table.error = pvt::error;
+#endif
+         sax.table.startElementNs = [&]( std::string localname, std::string prefix, std::string uri,
+                                         int nb_namespaces, const xmlChar ** namespaces, int nb_attributes, 
+                                         int nb_defaulted, const xmlChar ** attributes ) {  };
+         sax.table.endElementNs = []( std::string localname, std::string prefix, std::string uri) \
+              { std::cout << "endElementNs: name = '" << localname << "' prefix = '" << prefix << "' uri = '" << uri << "'" << endl; };
+         sax.table.warning = [](std::string msg) { std::cout << "warning: " << msg << std::endl; };
+         sax.table.error = [](std::string msg) { std::cout << "error: " << msg << std::endl; };
          auto ctxt = xmlCreatePushParserCtxt( sax.handler( ), &sax, nullptr, 0, nullptr);
          auto cb = std::function<curlfunc_t>(
               [&](void *ptr, size_t size, size_t nmemb) -> size_t {

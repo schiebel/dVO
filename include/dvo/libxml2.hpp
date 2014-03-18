@@ -1,10 +1,38 @@
+//# libxml2.hpp: C++ interface to libxml2
+//# Copyright (C) 2014
+//# Associated Universities, Inc. Washington DC, USA.
+//#
+//# This library is free software; you can redistribute it and/or modify it
+//# under the terms of the GNU Library General Public License as published by
+//# the Free Software Foundation; either version 2 of the License, or (at your
+//# option) any later version.
+//#
+//# This library is distributed in the hope that it will be useful, but WITHOUT
+//# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+//# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Library General Public
+//# License for more details.
+//#
+//# You should have received a copy of the GNU Library General Public License
+//# along with this library; if not, write to the Free Software Foundation,
+//# Inc., 675 Massachusetts Ave, Cambridge, MA 02139, USA.
+//#
+//# Correspondence concerning AIPS++ should be addressed as follows:
+//#        Internet email: aips2-request@nrao.edu.
+//#        Postal address: AIPS++ Project Office
+//#                        National Radio Astronomy Observatory
+//#                        520 Edgemont Road
+//#                        Charlottesville, VA 22903-2475 USA
+//#
 #pragma once
 #include <cstddef>
 #include <type_traits>
 #include <libxml/parser.h>
+#include <codecvt>
 
 namespace dvo {
     namespace xml2 {
+
+        extern std::string as_string(const xmlChar *xmlString);
 
         struct sax {
 
@@ -17,12 +45,33 @@ namespace dvo {
             // this convienience, though, is meta-information decoupled from the callback table ('table').
             struct Table {
 
+                // check to see if type 'IT' is among the remaining type list...
+                template <typename IT, typename... Tx> struct among {
+                    static constexpr bool value = true;
+                };
+                template<typename IT, typename T1, typename... Tx> struct among<IT,T1,Tx...> {
+                    static constexpr bool value = std::is_same<IT,T1>::value ? true : among<IT,Tx...>::value;
+                };
+                template<typename IT> struct among<IT> {
+                    static constexpr bool value = false;
+                };
+
+                template <typename T> struct as_string_t {
+                    typedef typename std::conditional<std::is_same<T,const xmlChar*>::value,std::string,T>::type type;
+                };
+                template<typename T> struct convert {
+                    convert( T v ) : value(v) { }
+                    operator std::string( ) { return std::is_same<T,const xmlChar*>::value ? as_string(value) : std::string(); }
+                    operator T( ) { return value; }
+                    T value;
+                };
+
                 // typical SAX callbacks "R name(void *ctx, T1 t1, T2 t2 ... )"
                 template<unsigned int index, typename R, typename... Args> class cb {
-                    std::function<R(Args...)> func;
+                    std::function<R(typename as_string_t<Args>::type...)> func;
                     static R cfunc(void *s,Args... args) {
                         return static_cast<cb<index,R,Args...>*>( (void*) ( (char*) s + offsetof(sax,table) +
-                                                                            static_cast<sax*>(s)->meta[index] ) )->func(args...);
+                        static_cast<sax*>(s)->meta[index] ) )->func(convert<Args>(args)...);
                     }
                 public:
                     cb( ) { }
