@@ -37,7 +37,7 @@ namespace dvo {
         // characters may be represented by 6 bytes. As long as all characters are represented as utf-8
         // within the program all is still good...
         inline std::string as_string(const xmlChar *xmlString) {
-             return std::string((char*)xmlString);
+             return xmlString ? std::string((char*)xmlString) : std::string( );
         }
 
         struct sax {

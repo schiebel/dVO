@@ -110,7 +110,9 @@ namespace dvo {
 #endif
          sax.table.startElementNs = [&]( std::string localname, std::string prefix, std::string uri,
                                          int nb_namespaces, const xmlChar ** namespaces, int nb_attributes, 
-                                         int nb_defaulted, const xmlChar ** attributes ) {  };
+                                         int nb_defaulted, const xmlChar ** attributes ) {
+              if ( localname == u8"TABLE" ) cout << "====>> " << localname << endl;
+         };
          sax.table.endElementNs = []( std::string localname, std::string prefix, std::string uri) \
               { std::cout << "endElementNs: name = '" << localname << "' prefix = '" << prefix << "' uri = '" << uri << "'" << endl; };
          sax.table.warning = [](std::string msg) { std::cout << "warning: " << msg << std::endl; };
