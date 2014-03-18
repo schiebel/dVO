@@ -43,35 +43,6 @@ constexpr unsigned long dvo::xml2::sax::meta[];
 
 namespace dvo {
 
-     namespace xml2 {
-
-        extern std::string as_string(const xmlChar *xmlString) {
-             return std::string((char*)xmlString);
-        }
-#if 0
-        extern std::wstring as_wstring(const xmlChar *xmlString) {    
-            std::wstring wideString;
-            if ( ! xmlString ) { return wideString; }      /* provided string was null */
-
-            int length = xmlStrlen(xmlString);
-            if (length > 0) {
-                char *origLocale = setlocale(LC_CTYPE, NULL);
-                setlocale(LC_CTYPE, "en_US.UTF-8");
-
-                mbtowc( nullptr, nullptr, 0 );                         /* reset mbtowc */
-                for ( int i=0; i < length; ++i ) {
-                     wchar_t dest;
-                     size_t wlength = mbtowc( &dest, (const char*) &xmlString[i], 1 );
-                     wideString.push_back(dest);
-                }
-                setlocale(LC_CTYPE, origLocale);
-            }
-            // if ( wideString.compare("VOTABLEF") == 0 ) cout << "\t\t\t<yes>" << endl;
-            return wideString;
-        }
-#endif
-     }
-
      typedef size_t (curlfunc_t)(void *ptr,size_t,size_t);
 
      namespace pvt {
