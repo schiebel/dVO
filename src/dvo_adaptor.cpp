@@ -111,10 +111,31 @@ namespace dvo {
          sax.table.startElementNs = [&]( std::string localname, std::string prefix, std::string uri,
                                          int nb_namespaces, const xmlChar ** namespaces, int nb_attributes, 
                                          int nb_defaulted, const xmlChar ** attributes ) {
-              if ( localname == u8"TABLE" ) cout << "====>> " << localname << endl;
+              if ( localname == u8"FIELD" ) {
+                   cout << "\tname = " << localname << " prefix = " << prefix << " uri = " << uri << endl;
+                   for ( int indexNamespace = 0; indexNamespace < nb_namespaces; ++indexNamespace ) {
+                        const xmlChar *prefix = namespaces[indexNamespace*2];
+                        const xmlChar *nsURI = namespaces[indexNamespace*2+1];
+                        cout << "\t\tnamespace: name = " << xml2::as_string(prefix) << "  uri = " << xml2::as_string(nsURI) << endl;
+                   }
+
+                   unsigned int index = 0;
+                   for ( int indexAttribute = 0; indexAttribute < nb_attributes; ++indexAttribute, index += 5 ) {
+                        const xmlChar *localname = attributes[index];
+                        const xmlChar *prefix = attributes[index+1];
+                        const xmlChar *nsURI = attributes[index+2];
+                        const xmlChar *valueBegin = attributes[index+3];
+                        const xmlChar *valueEnd = attributes[index+4];
+                        std::string value( (const char *)valueBegin, (const char *)valueEnd );
+                        cout << "\t\t" << (indexAttribute >= (nb_attributes - nb_defaulted) ? "defaulted " : "")
+                             << "attribute: localname = " << xml2::as_string(localname) << " prefix = " << xml2::as_string(prefix) << " uri =  " << xml2::as_string(nsURI) << " value = " << value << endl;
+                        if ( indexAttribute == nb_attributes-1 ) printf( "\t\t>>>>>>>>==========>> 0x%x\n", attributes[index+5] );
+                   }
+
+              }
          };
          sax.table.endElementNs = []( std::string localname, std::string prefix, std::string uri) \
-              { std::cout << "endElementNs: name = '" << localname << "' prefix = '" << prefix << "' uri = '" << uri << "'" << endl; };
+         { /*std::cout << "endElementNs: name = '" << localname << "' prefix = '" << prefix << "' uri = '" << uri << "'" << endl;*/ };
          sax.table.warning = [](std::string msg) { std::cout << "warning: " << msg << std::endl; };
          sax.table.error = [](std::string msg) { std::cout << "error: " << msg << std::endl; };
          auto ctxt = xmlCreatePushParserCtxt( sax.handler( ), &sax, nullptr, 0, nullptr);
