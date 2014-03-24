@@ -35,14 +35,6 @@
 namespace dvo {
     namespace xml2 {
 
-        // std::string can handle utf-8. however, it is important to keep in mind the fact that the lengths
-        // reported are the bytes that make up the string (rather than the characters, e.g. two chinese
-        // characters may be represented by 6 bytes. As long as all characters are represented as utf-8
-        // within the program all is still good...
-        inline std::string as_string(const xmlChar *xmlString) {
-             return xmlString ? std::string((char*)xmlString) : std::string( );
-        }
-
         namespace pvt {
 
             //----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- -----

@@ -50,54 +50,6 @@ namespace dvo {
           size_t curlfunc(void *ptr, size_t size, size_t nmemb, void *func) {
                return (*static_cast<std::function<curlfunc_t>*>(func))(ptr,size,nmemb);
           }
-
-          /** SAX2 callback when an element start has been detected by the parser. It provides the namespace informations for the element, as well as the new namespace declarations on the element.
-              ctx:  the user data (XML parser context)
-              localname:  the local name of the element
-              prefix:  the element namespace prefix if available
-              URI:  the element namespace name if available
-              nb_namespaces: number of namespace definitions on that node
-              namespaces: pointer to the array of prefix/URI pairs namespace definitions
-              nb_attributes: the number of attributes on that node
-              nb_defaulted:  the number of defaulted attributes. The defaulted ones are at the end of the array
-              attributes: pointer to the array of (localname/prefix/URI/value/end) attribute values.
-          */
-          static void startElementNs( const xmlChar * localname, 
-                                      const xmlChar * prefix, 
-                                      const xmlChar * URI, 
-                                      int nb_namespaces, 
-                                      const xmlChar ** namespaces, 
-                                      int nb_attributes, 
-                                      int nb_defaulted, 
-                                      const xmlChar ** attributes ) {
-               printf( "startElementNs: name = '%s' prefix = '%s' uri = (%p)'%s'\n", localname, prefix, URI, URI );
-               for ( int indexNamespace = 0; indexNamespace < nb_namespaces; ++indexNamespace )
-               {
-                    const xmlChar *prefix = namespaces[indexNamespace*2];
-                    const xmlChar *nsURI = namespaces[indexNamespace*2+1];
-                    printf( "  namespace: name='%s' uri=(%p)'%s'\n", prefix, nsURI, nsURI );
-               }
-
-               unsigned int index = 0;
-               for ( int indexAttribute = 0; 
-                     indexAttribute < nb_attributes; 
-                     ++indexAttribute, index += 5 )
-               {
-                    const xmlChar *localname = attributes[index];
-                    const xmlChar *prefix = attributes[index+1];
-                    const xmlChar *nsURI = attributes[index+2];
-                    const xmlChar *valueBegin = attributes[index+3];
-                    const xmlChar *valueEnd = attributes[index+4];
-                    std::string value( (const char *)valueBegin, (const char *)valueEnd );
-                    printf( "  %sattribute: localname='%s', prefix='%s', uri=(%p)'%s', value='%s'\n",
-                            indexAttribute >= (nb_attributes - nb_defaulted) ? "defaulted " : "",
-                            localname,
-                            prefix,
-                            nsURI,
-                            nsURI,
-                            value.c_str() );
-               }
-          }
      }
 
     void fetch_url( std::string url ) {
@@ -106,8 +58,6 @@ namespace dvo {
          curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, pvt::curlfunc);
          int count = 0;
          xml2::sax sax;
-
-         // sax.table.startElementNs = pvt::startElementNs;
 
          sax.table.startElementNs = [&]( std::string localname, std::string prefix, std::string uri,
                                          std::vector<std::tuple<std::string,std::string>> namespaces,
