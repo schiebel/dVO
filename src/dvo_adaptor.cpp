@@ -36,6 +36,7 @@
 
 using std::cout;
 using std::endl;
+using std::get;
 
 //
 // See <dvo/libxml2.hpp>...
@@ -105,39 +106,29 @@ namespace dvo {
          curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, pvt::curlfunc);
          int count = 0;
          xml2::sax sax;
-#if 0
-         sax.table.startElementNs = pvt::startElementNs;
-#endif
+
+         // sax.table.startElementNs = pvt::startElementNs;
+
          sax.table.startElementNs = [&]( std::string localname, std::string prefix, std::string uri,
-                                         int nb_namespaces, const xmlChar ** namespaces, int nb_attributes, 
-                                         int nb_defaulted, const xmlChar ** attributes ) {
-              if ( localname == u8"FIELD" ) {
-                   cout << "\tname = " << localname << " prefix = " << prefix << " uri = " << uri << endl;
-                   for ( int indexNamespace = 0; indexNamespace < nb_namespaces; ++indexNamespace ) {
-                        const xmlChar *prefix = namespaces[indexNamespace*2];
-                        const xmlChar *nsURI = namespaces[indexNamespace*2+1];
-                        cout << "\t\tnamespace: name = " << xml2::as_string(prefix) << "  uri = " << xml2::as_string(nsURI) << endl;
-                   }
+                                         std::vector<std::tuple<std::string,std::string>> namespaces,
+                                         std::vector<std::tuple<std::string,std::string,std::string,std::string>> attributes ) {
+                                            if ( localname == u8"FIELD" ) {
+                                                cout << "\tname = " << localname << " prefix = " << prefix << " uri = " << uri << endl;
 
-                   unsigned int index = 0;
-                   for ( int indexAttribute = 0; indexAttribute < nb_attributes; ++indexAttribute, index += 5 ) {
-                        const xmlChar *localname = attributes[index];
-                        const xmlChar *prefix = attributes[index+1];
-                        const xmlChar *nsURI = attributes[index+2];
-                        const xmlChar *valueBegin = attributes[index+3];
-                        const xmlChar *valueEnd = attributes[index+4];
-                        std::string value( (const char *)valueBegin, (const char *)valueEnd );
-                        cout << "\t\t" << (indexAttribute >= (nb_attributes - nb_defaulted) ? "defaulted " : "")
-                             << "attribute: localname = " << xml2::as_string(localname) << " prefix = " << xml2::as_string(prefix) << " uri =  " << xml2::as_string(nsURI) << " value = " << value << endl;
-                        if ( indexAttribute == nb_attributes-1 ) printf( "\t\t>>>>>>>>==========>> 0x%x\n", attributes[index+5] );
-                   }
+                                                for ( auto ns : namespaces )
+                                                    cout << "\t\tnamespace: name      = " << get<0>(ns) << "  uri = " << get<1>(ns) << endl;
 
-              }
-         };
+                                                for ( auto attr : attributes )
+                                                    cout << "\t\tattribute: localname = " << get<0>(attr) << " prefix = " << get<1>(attr) <<
+                                                            " uri =  " << get<2>(attr) << " value = " << get<3>(attr) << endl;
+                                            }
+                                    };
+
          sax.table.endElementNs = []( std::string localname, std::string prefix, std::string uri) \
          { /*std::cout << "endElementNs: name = '" << localname << "' prefix = '" << prefix << "' uri = '" << uri << "'" << endl;*/ };
          sax.table.warning = [](std::string msg) { std::cout << "warning: " << msg << std::endl; };
          sax.table.error = [](std::string msg) { std::cout << "error: " << msg << std::endl; };
+
          auto ctxt = xmlCreatePushParserCtxt( sax.handler( ), &sax, nullptr, 0, nullptr);
          auto cb = std::function<curlfunc_t>(
               [&](void *ptr, size_t size, size_t nmemb) -> size_t {
