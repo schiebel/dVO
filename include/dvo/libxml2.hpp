@@ -131,7 +131,6 @@ namespace dvo {
                     std::get<N>(args) = std::move(a1 ? std::string((char*)a1) : std::string( ));
                     morph<Rest...>::template fill<TUPLE,N+1>(args,rest...);
                 }
-            
             };
             
             template<typename T, typename... Rest> struct morph<T,Rest...> {
@@ -212,16 +211,38 @@ namespace dvo {
                     operator decltype(cfunc)*( ) const { return cfunc; }
                 };
 
+                // spacial case SAX "stream" callbacks where the string is represented as a pointer and a length...
+                template<unsigned int cbindex> class streamcb {
+                    std::function<void(std::string)> func;
+                    static void cfunc(void *s, const xmlChar *str, int num ) {
+                        static_cast<streamcb<cbindex>*>( (void*) ( (char*) s + offsetof(sax,table) +
+                                                                   static_cast<sax*>(s)->meta[cbindex] ) )->func(std::string(str ? std::string((char*)str, (char*)str+num) : std::string( )));
+                    }
+                public:
+                    streamcb( ) { }
+                    streamcb( decltype(func) f ) : func(f) { }
+                    void operator=( decltype(func) f ) { func = f; }
+                    operator bool( ) const { return (bool) func; }
+                    operator decltype(func)( ) const { return func; }
+                    operator decltype(cfunc)*( ) const { return cfunc; }
+                };
+
                 // typical SAX function pointer -- argument prefixed with 'void*' to pick off SAX user context argument...
                 //                                 which is not part of our cb<...> signature
                 template<class F> struct traits;
                 template<class R, class... Args>
                 struct traits<R(*)(void*,Args...)> : public traits<R(Args...)> { };
 
+                // special case for "stream" callbacks (string followed by length)...
+                template<class R> struct traits<R(*)(void *, const xmlChar *, int)> {
+                    template <unsigned int num> struct index {
+                        typedef streamcb<num> type;
+                    };
+                };
+
                 // special case SAX stdargs function pointer -- argument prefixed with 'void*' to pick off SAX user context
                 //                                              argument... which is not part of our vacb<...> signature
-                struct vatraits { };
-                template<class R> struct traits<R(*)(void *, const char *, ...)> : public vatraits {
+                template<class R> struct traits<R(*)(void *, const char *, ...)> {
                      template <unsigned int num> struct index {
                           typedef vacb<num> type;
                      };

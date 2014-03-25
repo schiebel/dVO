@@ -23,20 +23,26 @@
 //#                        520 Edgemont Road
 //#                        Charlottesville, VA 22903-2475 USA
 //#
-#include <iostream>
+#include <deque>
 #include <string>
 #include <numeric>
-#include <functional>
+#include <iostream>
 #include <string.h>
+#include <functional>
 #include <curl/curl.h>
-#include <libxml/xmlmemory.h>
-#include <dvo/adaptor.hpp>
 #include <dvo/dal.hpp>
+#include <dvo/adaptor.hpp>
+#include <libxml/xmlmemory.h>
 #include <dvo/libxml2.hpp>
 
+using std::vector;
+using std::string;
+using std::tuple;
+using std::deque;
 using std::cout;
 using std::endl;
 using std::get;
+using std::map;
 
 //
 // See <dvo/libxml2.hpp>...
@@ -52,52 +58,91 @@ namespace dvo {
           }
      }
 
-    void fetch_url( std::string url ) {
-         CURL *curl = curl_easy_init( );
-         curl_easy_setopt(curl,CURLOPT_URL,url.c_str( ));
-         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, pvt::curlfunc);
-         int count = 0;
-         xml2::sax sax;
+    void fetch_url( string url ) {
+        CURL *curl = curl_easy_init( );
+        curl_easy_setopt(curl,CURLOPT_URL,url.c_str( ));
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, pvt::curlfunc);
+        int count = 0;
+        xml2::sax sax;
 
-         sax.table.startElementNs = [&]( std::string localname, std::string prefix, std::string uri,
-                                         std::vector<std::tuple<std::string,std::string>> namespaces,
-                                         std::vector<std::tuple<std::string,std::string,std::string,std::string>> attributes ) {
-                                            if ( localname == u8"FIELD" ) {
-                                                cout << "\tname = " << localname << " prefix = " << prefix << " uri = " << uri << endl;
+        string type;
+        deque<string> keys_pattern;
+        deque<string> keys;           // >>> used for setting up data maps
+        map<string,string> values;
+        bool collect_characters = false;
+        bool inside_table = false;
+        string characters;
 
-                                                for ( auto ns : namespaces )
-                                                    cout << "\t\tnamespace: name      = " << get<0>(ns) << "  uri = " << get<1>(ns) << endl;
+        sax.table.startElementNs =
+            [&]( string localname, string prefix, string uri, vector<tuple<string,string>> namespaces,
+                 vector<tuple<string,string,string,string>> attributes ) {
+                    if ( localname == u8"RESOURCE" ) { type = "begin"; values.clear(); }
+                    if ( localname == u8"INFO" && attributes.size( ) > 1 ) {
+                        if ( get<0>(attributes[0]) == u8"name" && get<0>(attributes[1]) == u8"value" )
+                            values[get<3>(attributes[0])] = get<3>(attributes[1]);
+                        else if ( get<0>(attributes[0]) == u8"value" && get<0>(attributes[1]) == u8"name" )
+                            values[get<3>(attributes[1])] = get<3>(attributes[0]);
+                    }
+                    if ( localname == u8"TABLE" ) {
+                        /*push out "begin" observable*/
+                        type = "description";
+                        keys_pattern.clear( );
+                        values.clear( );
+                    }
+                    if ( localname == u8"FIELD" ) {
+                        string key, typ, units, size, desc;
+                        for ( auto attr : attributes ) {
+                            if ( get<0>(attr) == u8"name" ) key = get<3>(attr);
+                            else if ( get<0>(attr) == u8"datatype" ) typ = get<3>(attr);
+                            else if ( get<0>(attr) == u8"unit" ) units = get<3>(attr);
+                            else if ( get<0>(attr) == u8"utype" ) desc = get<3>(attr);
+                            else if ( get<0>(attr) == u8"arraysize" && get<3>(attr) != u8"*" ) size = get<3>(attr);
+                        }
+                        keys_pattern.push_back(key);
+                        values[key] = typ + "@" + units + "@" + size + "@" + desc;
+                    }
+                    if ( localname == u8"DATA" ) { /*push out "description" observable*/ }
+                    if ( localname == u8"TABLEDATA" ) { inside_table = true; }
+                    if ( inside_table && localname == u8"TR" ) { type = "data"; keys = keys_pattern; values.clear(); }
+                    if ( inside_table && localname == u8"TD" ) {  characters = ""; collect_characters = true; }
+        };
+                    
 
-                                                for ( auto attr : attributes )
-                                                    cout << "\t\tattribute: localname = " << get<0>(attr) << " prefix = " << get<1>(attr) <<
-                                                            " uri =  " << get<2>(attr) << " value = " << get<3>(attr) << endl;
-                                            }
-                                    };
+        sax.table.endElementNs = 
+            [&]( string localname, string prefix, string uri) {
+                    if ( localname == u8"TABLEDATA" ) { inside_table = false; }
+                    if ( localname == u8"RESOURCE" ) type = "end";
+                    if ( inside_table && localname == u8"TD" ) {
+                        values[keys.front( )] = characters;
+                        keys.pop_front( );
+                        collect_characters = false;
+                    }
+            };
 
-         sax.table.endElementNs = []( std::string localname, std::string prefix, std::string uri) \
-         { /*std::cout << "endElementNs: name = '" << localname << "' prefix = '" << prefix << "' uri = '" << uri << "'" << endl;*/ };
-         sax.table.warning = [](std::string msg) { std::cout << "warning: " << msg << std::endl; };
-         sax.table.error = [](std::string msg) { std::cout << "error: " << msg << std::endl; };
+        sax.table.characters = [&]( string chars ) { cout << "\t\t<<characters>> " << chars.size( ) << endl; };
 
-         auto ctxt = xmlCreatePushParserCtxt( sax.handler( ), &sax, nullptr, 0, nullptr);
-         auto cb = std::function<curlfunc_t>(
-              [&](void *ptr, size_t size, size_t nmemb) -> size_t {
-                   ++count;
-                   char buf[35];
-                   strncpy(buf,(char*)ptr,30);
-                   printf("(%zu/%zu): %s\n",size,nmemb,buf);
-                   //printf("%*.*s", size * nmemb, size * nmemb, ptr);
-                   xmlParseChunk(ctxt, (const char*) ptr, size*nmemb, 0);
-                   return size*nmemb;
-              });
-         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &cb);
-         curl_easy_perform(curl);
-         xmlFreeParserCtxt(ctxt);
-         curl_easy_cleanup(curl);
-         cout << ">>>===========>> " << count << endl;
+        sax.table.warning = [](string msg) { std::cout << "warning: " << msg << std::endl; };
+        sax.table.error = [](string msg) { std::cout << "error: " << msg << std::endl; };
+
+        auto ctxt = xmlCreatePushParserCtxt( sax.handler( ), &sax, nullptr, 0, nullptr);
+        auto cb = std::function<curlfunc_t>(
+            [&](void *ptr, size_t size, size_t nmemb) -> size_t {
+                    ++count;
+                    char buf[35];
+                    strncpy(buf,(char*)ptr,30);
+                    printf("(%zu/%zu): %s\n",size,nmemb,buf);
+                    //printf("%*.*s", size * nmemb, size * nmemb, ptr);
+                    xmlParseChunk(ctxt, (const char*) ptr, size*nmemb, 0);
+                    return size*nmemb;
+            });
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &cb);
+        curl_easy_perform(curl);
+        xmlFreeParserCtxt(ctxt);
+        curl_easy_cleanup(curl);
+        cout << ">>>===========>> " << count << endl;
     }
 
-    adaptor::adaptor( std::string bus_name, std::string object_path ) : casa::dbus::address(bus_name),
+    adaptor::adaptor( string bus_name, string object_path ) : casa::dbus::address(bus_name),
                                                                         DBus::ObjectAdaptor( casa::DBusSession::instance( ).connection( ), object_path ),
                                                                         standard_vos{"http://vaosa-vm1.aoc.nrao.edu/ivoa-dal/siapv2"} { }
 
@@ -105,40 +150,40 @@ namespace dvo {
          /* signal: disconnect( ); */
     }
 
-    int32_t adaptor::fetch(const std::vector< std::string >& urls, const bool& poll) {
+    int32_t adaptor::fetch(const vector< string >& urls, const bool& poll) {
         cout << "adaptor::fetch( [";
         for ( auto v: urls ) cout << v << " ";
         cout << "], " << poll << " )" << endl;
         return 2001;
     }
-    std::vector< ::DBus::Variant > adaptor::request(const int32_t& id) {
+    vector< ::DBus::Variant > adaptor::request(const int32_t& id) {
         cout << "adaptor::request( " << id << " )" << endl;
-        return std::vector<::DBus::Variant>( );
+        return vector<::DBus::Variant>( );
     }
     int32_t adaptor::query( const double& ra, const double& dec,
                             const double& ra_size, const double& dec_size,
-                            const std::string& format, const bool& poll,
-                            const std::map< std::string, ::DBus::Variant >& params,
-                            const std::vector< std::string >& vos) {
+                            const string& format, const bool& poll,
+                            const map< string, ::DBus::Variant >& params,
+                            const vector< string >& vos) {
         auto qry = dal::Query( standard_vos[0], ra, dec, ra_size, dec_size );
 
         std::accumulate( params.begin( ), params.end( ), qry,
-                         []( dal::Query q, std::pair<std::string,::DBus::Variant> p ) -> dal::Query {
+                         []( dal::Query q, std::pair<string,::DBus::Variant> p ) -> dal::Query {
                               if ( p.second.signature( ) == ::DBus::type<uint8_t>::sig( ) ) return q.add(p.first,(long) static_cast<uint8_t>(p.second));
                               else if ( p.second.signature( ) == ::DBus::type<int16_t>::sig( ) ) return q.add(p.first,(long) static_cast<int16_t>(p.second));
                               else if ( p.second.signature( ) == ::DBus::type<uint16_t>::sig( ) ) return q.add(p.first,(long) static_cast<uint16_t>(p.second));
                               else if ( p.second.signature( ) == ::DBus::type<int32_t>::sig( ) ) return q.add(p.first,(long) static_cast<int32_t>(p.second));
                               else if ( p.second.signature( ) == ::DBus::type<uint32_t>::sig( ) ) return q.add(p.first,(long) static_cast<uint32_t>(p.second));
                               else if ( p.second.signature( ) == ::DBus::type<double>::sig( ) ) return q.add(p.first,static_cast<double>(p.second));
-                              else if ( p.second.signature( ) == ::DBus::type<std::string>::sig( ) ) return q.add(p.first,p.second.operator std::string( ));
-                              else throw std::runtime_error(std::string("type conversion failed for: ") + p.first);
+                              else if ( p.second.signature( ) == ::DBus::type<string>::sig( ) ) return q.add(p.first,p.second.operator string( ));
+                              else throw std::runtime_error(string("type conversion failed for: ") + p.first);
                          } );
 
         cout << "url:\t" << qry.url() << endl;
         cout << "-----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----" << endl;
         fetch_url( qry.url( ) );
         cout << "-----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----" << endl;
-         
+
         return 2003;
     }
 }
