@@ -58,7 +58,7 @@ namespace dvo {
           }
      }
 
-    void fetch_url( string url ) {
+    void fetch_query( string url ) {
         CURL *curl = curl_easy_init( );
         curl_easy_setopt(curl,CURLOPT_URL,url.c_str( ));
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, pvt::curlfunc);
@@ -169,23 +169,34 @@ namespace dvo {
                             const string& format, const bool& poll,
                             const map< string, ::DBus::Variant >& params,
                             const vector< string >& vos) {
+
+        // set up the initial query parameters...
         auto qry = dal::Query( standard_vos[0], ra, dec, ra_size, dec_size );
 
+        // add in the extra query parameters...
+        // query server ignores unknown/unexpected parameters...
         std::accumulate( params.begin( ), params.end( ), qry,
                          []( dal::Query q, std::pair<string,::DBus::Variant> p ) -> dal::Query {
-                              if ( p.second.signature( ) == ::DBus::type<uint8_t>::sig( ) ) return q.add(p.first,(long) static_cast<uint8_t>(p.second));
-                              else if ( p.second.signature( ) == ::DBus::type<int16_t>::sig( ) ) return q.add(p.first,(long) static_cast<int16_t>(p.second));
-                              else if ( p.second.signature( ) == ::DBus::type<uint16_t>::sig( ) ) return q.add(p.first,(long) static_cast<uint16_t>(p.second));
-                              else if ( p.second.signature( ) == ::DBus::type<int32_t>::sig( ) ) return q.add(p.first,(long) static_cast<int32_t>(p.second));
-                              else if ( p.second.signature( ) == ::DBus::type<uint32_t>::sig( ) ) return q.add(p.first,(long) static_cast<uint32_t>(p.second));
-                              else if ( p.second.signature( ) == ::DBus::type<double>::sig( ) ) return q.add(p.first,static_cast<double>(p.second));
-                              else if ( p.second.signature( ) == ::DBus::type<string>::sig( ) ) return q.add(p.first,p.second.operator string( ));
+                              if ( p.second.signature( ) == ::DBus::type<uint8_t>::sig( ) )
+                                  return q.add(p.first,(long) static_cast<uint8_t>(p.second));
+                              else if ( p.second.signature( ) == ::DBus::type<int16_t>::sig( ) )
+                                  return q.add(p.first,(long) static_cast<int16_t>(p.second));
+                              else if ( p.second.signature( ) == ::DBus::type<uint16_t>::sig( ) )
+                                  return q.add(p.first,(long) static_cast<uint16_t>(p.second));
+                              else if ( p.second.signature( ) == ::DBus::type<int32_t>::sig( ) )
+                                  return q.add(p.first,(long) static_cast<int32_t>(p.second));
+                              else if ( p.second.signature( ) == ::DBus::type<uint32_t>::sig( ) )
+                                  return q.add(p.first,(long) static_cast<uint32_t>(p.second));
+                              else if ( p.second.signature( ) == ::DBus::type<double>::sig( ) )
+                                  return q.add(p.first,static_cast<double>(p.second));
+                              else if ( p.second.signature( ) == ::DBus::type<string>::sig( ) )
+                                  return q.add(p.first,p.second.operator string( ));
                               else throw std::runtime_error(string("type conversion failed for: ") + p.first);
                          } );
 
         cout << "url:\t" << qry.url() << endl;
         cout << "-----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----" << endl;
-        fetch_url( qry.url( ) );
+        fetch_query( qry.url( ) );
         cout << "-----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----" << endl;
 
         return 2003;
