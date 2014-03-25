@@ -74,22 +74,24 @@ namespace dvo {
         string characters;
 
         sax.table.startElementNs =
-            [&]( string localname, string prefix, string uri, vector<tuple<string,string>> namespaces,
+            [&]( string name, string prefix, string uri, vector<tuple<string,string>> namespaces,
                  vector<tuple<string,string,string,string>> attributes ) {
-                    if ( localname == u8"RESOURCE" ) { type = "begin"; values.clear(); }
-                    if ( localname == u8"INFO" && attributes.size( ) > 1 ) {
+                    if ( name == u8"TR" ) { if ( inside_table ) {type = "data"; keys = keys_pattern; values.clear(); } }
+                    else if ( name == u8"TD" ) {  if ( inside_table ) { characters = ""; collect_characters = true; } }
+                    else if ( name == u8"RESOURCE" ) { type = "begin"; values.clear(); }
+                    else if ( name == u8"INFO" && attributes.size( ) > 1 ) {
                         if ( get<0>(attributes[0]) == u8"name" && get<0>(attributes[1]) == u8"value" )
                             values[get<3>(attributes[0])] = get<3>(attributes[1]);
                         else if ( get<0>(attributes[0]) == u8"value" && get<0>(attributes[1]) == u8"name" )
                             values[get<3>(attributes[1])] = get<3>(attributes[0]);
                     }
-                    if ( localname == u8"TABLE" ) {
+                    else if ( name == u8"TABLE" ) {
                         /*push out "begin" observable*/
                         type = "description";
                         keys_pattern.clear( );
                         values.clear( );
                     }
-                    if ( localname == u8"FIELD" ) {
+                    else if ( name == u8"FIELD" ) {
                         string key, typ, units, size, desc;
                         for ( auto attr : attributes ) {
                             if ( get<0>(attr) == u8"name" ) key = get<3>(attr);
@@ -101,25 +103,27 @@ namespace dvo {
                         keys_pattern.push_back(key);
                         values[key] = typ + "@" + units + "@" + size + "@" + desc;
                     }
-                    if ( localname == u8"DATA" ) { /*push out "description" observable*/ }
-                    if ( localname == u8"TABLEDATA" ) { inside_table = true; }
-                    if ( inside_table && localname == u8"TR" ) { type = "data"; keys = keys_pattern; values.clear(); }
-                    if ( inside_table && localname == u8"TD" ) {  characters = ""; collect_characters = true; }
+                    else if ( name == u8"DATA" ) {
+                         /*push out "description" observable*/
+                    }
+                    else if ( name == u8"TABLEDATA" ) { inside_table = true; }
         };
                     
 
         sax.table.endElementNs = 
-            [&]( string localname, string prefix, string uri) {
-                    if ( localname == u8"TABLEDATA" ) { inside_table = false; }
-                    if ( localname == u8"RESOURCE" ) type = "end";
-                    if ( inside_table && localname == u8"TD" ) {
-                        values[keys.front( )] = characters;
-                        keys.pop_front( );
-                        collect_characters = false;
-                    }
+            [&]( string name, string prefix, string uri) {
+                    if ( name == u8"TABLEDATA" ) { inside_table = false; }
+                    else if ( name == u8"RESOURCE" ) type = "end";
+                    else if ( name == u8"TD" ) {
+                        if ( inside_table ) {
+                            values[keys.front( )] = characters;
+                            keys.pop_front( );
+                            collect_characters = false;
+                        }
+                    } else if ( name == u8"TR" ) { if ( inside_table ) { /* shift "data" onto observables */ } }
             };
 
-        sax.table.characters = [&]( string chars ) { cout << "\t\t<<characters>> " << chars.size( ) << endl; };
+        sax.table.characters = [&]( string chars ) { if ( collect_characters ) characters += chars; };
 
         sax.table.warning = [](string msg) { std::cout << "warning: " << msg << std::endl; };
         sax.table.error = [](string msg) { std::cout << "error: " << msg << std::endl; };
