@@ -1,0 +1,5 @@
+In [1]: import dbus
+In [2]: bus = dbus.SessionBus( )
+In [3]: proxy = bus.get_object('edu.nrao.casa.dVO_5PN',"/casa/dVO")
+In [4]: p = dbus.Interface(proxy,'edu.nrao.casa.dVO')
+In [5]: p.query(180.0,0.0,360.0,360.0,"",True,{'BAND':'1.0E-8/5', 'TIME': '1990-07-04/2014', 'MODE':'archival', 'COLLECTION':'alma,jvla,vla'},[])
