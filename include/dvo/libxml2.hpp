@@ -43,19 +43,19 @@ namespace dvo {
             template< template< class... > class T, class...Args1,
                       template< class... > class U, class...Args2 >
             struct union_t< T< Args1... >, U< Args2... > > {
-                     typedef T<Args1...,Args2...> type;
+                     using type = T<Args1...,Args2...>;
             };
             template< template< class... > class T, class...Args1 >
             struct union_t< T< Args1... >, void > {
-                     typedef T<Args1...> type;
+                     using type = T<Args1...>;
             };
 
 
             //----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- -----
             template<typename Result, typename... Args> struct function_t {
-                typedef std::function<Result(Args...)> func;
-                typedef function_t<Result,Args...> type;
-                typedef std::tuple<Args...> args;
+                using func = std::function<Result(Args...)>;
+                using type = function_t<Result,Args...>;
+                using args = std::tuple<Args...>;
             };
 
 
@@ -64,14 +64,14 @@ namespace dvo {
             template<int...indexes> struct seq { static std::vector<int> value( ) { std::vector<int> result{indexes...}; return result; } };
             template<int N, int ...S> struct genseq : genseq<N-1, N-1, S...> { };
             template<int ...S> struct genseq<0, S...> {
-                typedef seq<S...> type;
+                using type = seq<S...>;
             };
 
 
             //----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- -----
             template<typename... Rest> struct morph;
             template<> struct morph<> {
-                typedef void type;
+                using type = void;
             
                 template<class TUPLE, int N>
                 static void fill(TUPLE &args) { }
@@ -80,7 +80,7 @@ namespace dvo {
 
             template<typename... Rest> struct morph<int,int,const xmlChar**, Rest...> {
                 // throw away the "number defaulted" parameter (second 'int')...
-                typedef typename union_t<function_t<std::vector<std::tuple<std::string,std::string,std::string,std::string>>>,typename morph<Rest...>::type>::type::type type;
+                using type = typename union_t<function_t<std::vector<std::tuple<std::string,std::string,std::string,std::string>>>,typename morph<Rest...>::type>::type::type;
                 template<class TUPLE, int N>
                 static void fill(TUPLE &args, int num, int, const xmlChar **a1, Rest...rest) {                                   //  <-----<<< thought to be attributes
                     std::vector<std::tuple<std::string,std::string,std::string,std::string>> vals;
@@ -104,7 +104,7 @@ namespace dvo {
             };
 
             template<typename... Rest> struct morph<int,const xmlChar**, Rest...> {
-                typedef typename union_t<function_t<std::vector<std::tuple<std::string,std::string>>>,typename morph<Rest...>::type>::type::type type;
+                using type = typename union_t<function_t<std::vector<std::tuple<std::string,std::string>>>,typename morph<Rest...>::type>::type::type;
                 template<class TUPLE, int N>
                 static void fill(TUPLE &args, int num, const xmlChar **a1, Rest...rest) {                                        //  <-----<<< thought to be namespaces
                     std::vector<std::tuple<std::string,std::string>> vals;
@@ -124,7 +124,7 @@ namespace dvo {
             };
 
             template<typename... Rest> struct morph<const xmlChar*,Rest...> {
-                typedef typename union_t<function_t<std::string>,typename morph<Rest...>::type>::type::type type;
+                using type = typename union_t<function_t<std::string>,typename morph<Rest...>::type>::type::type;
             
                 template<class TUPLE, int N>
                 static void fill(TUPLE &args, const xmlChar *a1, Rest...rest) {
@@ -134,7 +134,7 @@ namespace dvo {
             };
             
             template<typename T, typename... Rest> struct morph<T,Rest...> {
-                typedef typename union_t<function_t<T>,typename morph<Rest...>::type>::type type;
+                using type = typename union_t<function_t<T>,typename morph<Rest...>::type>::type;
 
                 // std::enable_if<...>::type needed because 'T'/'U' can be void (when it's the return type)...
                 template<class TUPLE, int N, typename U = T>
@@ -236,7 +236,7 @@ namespace dvo {
                 // special case for "stream" callbacks (string followed by length)...
                 template<class R> struct traits<R(*)(void *, const xmlChar *, int)> {
                     template <unsigned int num> struct index {
-                        typedef streamcb<num> type;
+                        using type = streamcb<num>;
                     };
                 };
 
@@ -244,13 +244,13 @@ namespace dvo {
                 //                                              argument... which is not part of our vacb<...> signature
                 template<class R> struct traits<R(*)(void *, const char *, ...)> {
                      template <unsigned int num> struct index {
-                          typedef vacb<num> type;
+                          using type = vacb<num>;
                      };
                 };
                 // typical SAX function traits with types explicitly enumerated...
                 template<class R, class... Args> struct traits<R(Args...)> {
                     template <unsigned int num> struct index {
-                        typedef cb<num, R, Args...> type;
+                        using type = cb<num, R, Args...>;
                     };
                 };
 

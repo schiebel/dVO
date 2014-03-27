@@ -46,15 +46,16 @@ using std::endl;
 using std::get;
 using std::map;
 
+using OBS = tuple<int,string,map<string,string>>;
+
 //
 // See <dvo/libxml2.hpp>...
 constexpr unsigned long dvo::xml2::sax::meta[];
 
-typedef tuple<int,string,map<string,string>> OBS;
 
 namespace dvo {
 
-    typedef size_t (curlfunc_t)(void *ptr,size_t,size_t);
+    using curlfunc_t = size_t (void *ptr,size_t,size_t);
 
     namespace pvt {
         size_t curlfunc(void *ptr, size_t size, size_t nmemb, void *func) {
