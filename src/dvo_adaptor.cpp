@@ -34,7 +34,9 @@
 #include <dvo/adaptor.hpp>
 #include <libxml/xmlmemory.h>
 #include <dvo/libxml2.hpp>
+#include <rxcpp/rx.hpp>
 
+using std::shared_ptr;
 using std::vector;
 using std::string;
 using std::tuple;
@@ -48,23 +50,36 @@ using std::map;
 // See <dvo/libxml2.hpp>...
 constexpr unsigned long dvo::xml2::sax::meta[];
 
+typedef tuple<int,string,map<string,string>> OBS;
+
 namespace dvo {
 
-     typedef size_t (curlfunc_t)(void *ptr,size_t,size_t);
+    typedef size_t (curlfunc_t)(void *ptr,size_t,size_t);
 
-     namespace pvt {
-          size_t curlfunc(void *ptr, size_t size, size_t nmemb, void *func) {
-               return (*static_cast<std::function<curlfunc_t>*>(func))(ptr,size,nmemb);
-          }
-     }
+    namespace pvt {
+        size_t curlfunc(void *ptr, size_t size, size_t nmemb, void *func) {
+            return (*static_cast<std::function<curlfunc_t>*>(func))(ptr,size,nmemb);
+        }
+    }
 
-    void fetch_query( string url ) {
+static shared_ptr<rxcpp::Observable<OBS>> create_subject( int id, std::function<void(int id, shared_ptr<rxcpp::Observer<OBS>>, string, rxcpp::Scheduler::shared )> func, string url, rxcpp::Scheduler::shared scheduler = nullptr ) {
+    if ( ! scheduler ) {
+        scheduler = std::make_shared<rxcpp::EventLoopScheduler>( );
+    }
+    auto subject = rxcpp::CreateSubject<OBS>( );
+    scheduler->Schedule( rxcpp::fix0([=](rxcpp::Scheduler::shared s, std::function<rxcpp::Disposable(rxcpp::Scheduler::shared)> self) -> rxcpp::Disposable {
+                                 func( id, subject, url, scheduler );
+                                 return rxcpp::Disposable::Empty( );
+                         }) );
+    return subject;
+}
+
+void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string url, rxcpp::Scheduler::shared scheduler ) {
         CURL *curl = curl_easy_init( );
         curl_easy_setopt(curl,CURLOPT_URL,url.c_str( ));
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, pvt::curlfunc);
         int count = 0;
         xml2::sax sax;
-
         string type;
         deque<string> keys_pattern;
         deque<string> keys;           // >>> used for setting up data maps
@@ -76,7 +91,7 @@ namespace dvo {
         sax.table.startElementNs =
             [&]( string name, string prefix, string uri, vector<tuple<string,string>> namespaces,
                  vector<tuple<string,string,string,string>> attributes ) {
-                    if ( name == u8"TR" ) { if ( inside_table ) {type = "data"; keys = keys_pattern; values.clear(); } }
+                    if ( name == u8"TR" ) { if ( inside_table ) { type = "data"; keys = keys_pattern; values.clear(); } }
                     else if ( name == u8"TD" ) {  if ( inside_table ) { characters = ""; collect_characters = true; } }
                     else if ( name == u8"RESOURCE" ) { type = "begin"; values.clear(); }
                     else if ( name == u8"INFO" && attributes.size( ) > 1 ) {
@@ -86,10 +101,11 @@ namespace dvo {
                             values[get<3>(attributes[1])] = get<3>(attributes[0]);
                     }
                     else if ( name == u8"TABLE" ) {
-                        /*push out "begin" observable*/
+                        // >>>>===>> push out "begin" observable
+                        obs->OnNext(OBS(id,type,values));
                         type = "description";
-                        keys_pattern.clear( );
                         values.clear( );
+                        keys_pattern.clear( );
                     }
                     else if ( name == u8"FIELD" ) {
                         string key, typ, units, size, desc;
@@ -104,7 +120,9 @@ namespace dvo {
                         values[key] = typ + "@" + units + "@" + size + "@" + desc;
                     }
                     else if ( name == u8"DATA" ) {
-                         /*push out "description" observable*/
+                        // >>>>===>> push out "description" observable
+                        obs->OnNext(OBS(id,type,values));
+                        // "data" state is setup in <TR> and pushed out in </TR>...
                     }
                     else if ( name == u8"TABLEDATA" ) { inside_table = true; }
         };
@@ -120,7 +138,16 @@ namespace dvo {
                             keys.pop_front( );
                             collect_characters = false;
                         }
-                    } else if ( name == u8"TR" ) { if ( inside_table ) { /* shift "data" onto observables */ } }
+                    } else if ( name == u8"TR" ) {
+                        if ( inside_table ) {
+                             // >>>>===>> push out "description" observable
+                             obs->OnNext(OBS(id,type,values));
+                        }
+                    } else if ( name == u8"DATA" ) {
+                        // >>>>===>> signal completion
+                        obs->OnNext(OBS(id,"end",map<string,string>( )));
+                        obs->OnCompleted( );
+                    }
             };
 
         sax.table.characters = [&]( string chars ) { if ( collect_characters ) characters += chars; };
@@ -132,10 +159,6 @@ namespace dvo {
         auto cb = std::function<curlfunc_t>(
             [&](void *ptr, size_t size, size_t nmemb) -> size_t {
                     ++count;
-                    char buf[35];
-                    strncpy(buf,(char*)ptr,30);
-                    printf("(%zu/%zu): %s\n",size,nmemb,buf);
-                    //printf("%*.*s", size * nmemb, size * nmemb, ptr);
                     xmlParseChunk(ctxt, (const char*) ptr, size*nmemb, 0);
                     return size*nmemb;
             });
@@ -196,7 +219,10 @@ namespace dvo {
 
         cout << "url:\t" << qry.url() << endl;
         cout << "-----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----" << endl;
-        fetch_query( qry.url( ) );
+        auto obs = create_subject( 2003, fetch_query, qry.url( ) );
+        cout << ">>>H>>>E>>>R>>>E>>>" << endl;
+        rxcpp::from(obs).for_each( []( OBS val ) { cout << "\t" << get<1>(val) << endl; } );
+        // fetch_query( 2003, qry.url( ) );
         cout << "-----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----" << endl;
 
         return 2003;
