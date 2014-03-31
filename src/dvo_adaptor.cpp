@@ -103,6 +103,8 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_servic
                     }
                     else if ( name == u8"TABLE" ) {
                         // >>>>===>> push out "begin" observable
+                        values["URL base"] = vo_service;
+                        values["URL full"] = url;
                         obs->OnNext(OBS( id, vo_service, type, values ));
                         type = "description";
                         values.clear( );
