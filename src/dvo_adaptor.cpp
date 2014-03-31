@@ -46,7 +46,7 @@ using std::endl;
 using std::get;
 using std::map;
 
-using OBS = tuple<int,string,map<string,string>>;
+using OBS = tuple<int,string,string,map<string,string>>;
 
 //
 // See <dvo/libxml2.hpp>...
@@ -63,19 +63,19 @@ namespace dvo {
         }
     }
 
-static shared_ptr<rxcpp::Observable<OBS>> create_subject( int id, std::function<void(int id, shared_ptr<rxcpp::Observer<OBS>>, string, rxcpp::Scheduler::shared )> func, string url, rxcpp::Scheduler::shared scheduler = nullptr ) {
+static shared_ptr<rxcpp::Observable<OBS>> create_subject( int id, std::function<void(int id, shared_ptr<rxcpp::Observer<OBS>>, string, string, rxcpp::Scheduler::shared )> func, string vo_service, string url, rxcpp::Scheduler::shared scheduler = nullptr ) {
     if ( ! scheduler ) {
         scheduler = std::make_shared<rxcpp::EventLoopScheduler>( );
     }
     auto subject = rxcpp::CreateSubject<OBS>( );
     scheduler->Schedule( rxcpp::fix0([=](rxcpp::Scheduler::shared s, std::function<rxcpp::Disposable(rxcpp::Scheduler::shared)> self) -> rxcpp::Disposable {
-                                 func( id, subject, url, scheduler );
+                                 func( id, subject, vo_service, url, scheduler );
                                  return rxcpp::Disposable::Empty( );
                          }) );
     return subject;
 }
 
-void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string url, rxcpp::Scheduler::shared scheduler ) {
+void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_service, string url, rxcpp::Scheduler::shared scheduler ) {
         CURL *curl = curl_easy_init( );
         curl_easy_setopt(curl,CURLOPT_URL,url.c_str( ));
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, pvt::curlfunc);
@@ -103,7 +103,7 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string url, rxcp
                     }
                     else if ( name == u8"TABLE" ) {
                         // >>>>===>> push out "begin" observable
-                        obs->OnNext(OBS(id,type,values));
+                        obs->OnNext(OBS( id, vo_service, type, values ));
                         type = "description";
                         values.clear( );
                         keys_pattern.clear( );
@@ -122,7 +122,7 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string url, rxcp
                     }
                     else if ( name == u8"DATA" ) {
                         // >>>>===>> push out "description" observable
-                        obs->OnNext(OBS(id,type,values));
+                        obs->OnNext(OBS( id, vo_service, type, values ));
                         // "data" state is setup in <TR> and pushed out in </TR>...
                     }
                     else if ( name == u8"TABLEDATA" ) { inside_table = true; }
@@ -142,11 +142,11 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string url, rxcp
                     } else if ( name == u8"TR" ) {
                         if ( inside_table ) {
                              // >>>>===>> push out "description" observable
-                             obs->OnNext(OBS(id,type,values));
+                             obs->OnNext(OBS( id, vo_service, type, values ));
                         }
                     } else if ( name == u8"DATA" ) {
                         // >>>>===>> signal completion
-                        obs->OnNext(OBS(id,"end",map<string,string>( )));
+                        obs->OnNext(OBS( id, vo_service, "end", map<string,string>( ) ));
                         obs->OnCompleted( );
                     }
             };
@@ -220,9 +220,10 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string url, rxcp
 
         cout << "url:\t" << qry.url() << endl;
         cout << "-----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----" << endl;
-        auto obs = create_subject( 2003, fetch_query, qry.url( ) );
+        auto obs1 = create_subject( 2003, fetch_query, standard_vos[0], qry.url( ) );
+        auto obs2 = create_subject( 2003, fetch_query, standard_vos[0], qry.url( ) );
         cout << ">>>H>>>E>>>R>>>E>>>" << endl;
-        rxcpp::from(obs).for_each( []( OBS val ) { cout << "\t" << get<1>(val) << endl; } );
+        rxcpp::from(obs1).merge(obs2).for_each( []( OBS val ) { cout << "\t" << get<2>(val) << endl; } );
         // fetch_query( 2003, qry.url( ) );
         cout << "-----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----" << endl;
 

@@ -28,11 +28,14 @@
 #include <libxml/xmlmemory.h>
 #include <libxml/parser.h>
 #include <dvo/adaptor.hpp>
+#include <dbus/dbus.h>
 
 using std::cout;
 using std::endl;
 int main( int argc, char *argv[] ) {
-
+     // make dbus thread aware...
+     dbus_threads_init_default( );
+     // ensure libxml2 headers/libraries match...
      LIBXML_TEST_VERSION
 
      auto adaptor = std::make_shared<dvo::adaptor>("dVO","/casa/dVO");
