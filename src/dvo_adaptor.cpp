@@ -37,6 +37,7 @@
 #include <rxcpp/rx.hpp>
 
 using std::shared_ptr;
+using std::function;
 using std::vector;
 using std::string;
 using std::tuple;
@@ -46,7 +47,7 @@ using std::endl;
 using std::get;
 using std::map;
 
-using OBS = tuple<int,string,string,map<string,string>>;
+using OBS = tuple<string,int,string,map<string,string>>;
 
 //
 // See <dvo/libxml2.hpp>...
@@ -59,16 +60,16 @@ namespace dvo {
 
     namespace pvt {
         size_t curlfunc(void *ptr, size_t size, size_t nmemb, void *func) {
-            return (*static_cast<std::function<curlfunc_t>*>(func))(ptr,size,nmemb);
+            return (*static_cast<function<curlfunc_t>*>(func))(ptr,size,nmemb);
         }
     }
 
-static shared_ptr<rxcpp::Observable<OBS>> create_subject( int id, std::function<void(int id, shared_ptr<rxcpp::Observer<OBS>>, string, string, rxcpp::Scheduler::shared )> func, string vo_service, string url, rxcpp::Scheduler::shared scheduler = nullptr ) {
+static shared_ptr<rxcpp::Observable<OBS>> create_subject( int id, function<void(int id, shared_ptr<rxcpp::Observer<OBS>>, string, string, rxcpp::Scheduler::shared )> func, string vo_service, string url, rxcpp::Scheduler::shared scheduler = nullptr ) {
     if ( ! scheduler ) {
         scheduler = std::make_shared<rxcpp::EventLoopScheduler>( );
     }
     auto subject = rxcpp::CreateSubject<OBS>( );
-    scheduler->Schedule( rxcpp::fix0([=](rxcpp::Scheduler::shared s, std::function<rxcpp::Disposable(rxcpp::Scheduler::shared)> self) -> rxcpp::Disposable {
+    scheduler->Schedule( rxcpp::fix0([=](rxcpp::Scheduler::shared s, function<rxcpp::Disposable(rxcpp::Scheduler::shared)> self) -> rxcpp::Disposable {
                                  func( id, subject, vo_service, url, scheduler );
                                  return rxcpp::Disposable::Empty( );
                          }) );
@@ -105,7 +106,7 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_servic
                         // >>>>===>> push out "begin" observable
                         values["URL base"] = vo_service;
                         values["URL full"] = url;
-                        obs->OnNext(OBS( id, vo_service, type, values ));
+                        obs->OnNext(OBS( type, id, vo_service, values ));
                         type = "description";
                         values.clear( );
                         keys_pattern.clear( );
@@ -124,7 +125,7 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_servic
                     }
                     else if ( name == u8"DATA" ) {
                         // >>>>===>> push out "description" observable
-                        obs->OnNext(OBS( id, vo_service, type, values ));
+                        obs->OnNext(OBS( type, id, vo_service, values ));
                         // "data" state is setup in <TR> and pushed out in </TR>...
                     }
                     else if ( name == u8"TABLEDATA" ) { inside_table = true; }
@@ -144,11 +145,11 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_servic
                     } else if ( name == u8"TR" ) {
                         if ( inside_table ) {
                              // >>>>===>> push out "description" observable
-                             obs->OnNext(OBS( id, vo_service, type, values ));
+                             obs->OnNext(OBS( type, id, vo_service, values ));
                         }
                     } else if ( name == u8"DATA" ) {
                         // >>>>===>> signal completion
-                        obs->OnNext(OBS( id, vo_service, "end", map<string,string>( ) ));
+                        obs->OnNext(OBS( "end", id, vo_service, map<string,string>( ) ));
                         obs->OnCompleted( );
                     }
             };
@@ -159,7 +160,7 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_servic
         sax.table.error = [](string msg) { std::cout << "error: " << msg << std::endl; };
 
         auto ctxt = xmlCreatePushParserCtxt( sax.handler( ), &sax, nullptr, 0, nullptr);
-        auto cb = std::function<curlfunc_t>(
+        auto cb = function<curlfunc_t>(
             [&](void *ptr, size_t size, size_t nmemb) -> size_t {
                     ++count;
                     xmlParseChunk(ctxt, (const char*) ptr, size*nmemb, 0);
@@ -220,12 +221,21 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_servic
                               else throw std::runtime_error(string("type conversion failed for: ") + p.first);
                          } );
 
+        map<string,function<void(int,string,const map<string,string>&)>> signals {
+             { "begin", [=]( int id, string service, const map<string,string> &values ) {this->begin(id,service,values);} },
+             { "description", [=]( int id, string service, const map<string,string> &values ) {this->description(id,service,values);} },
+             { "data", [=]( int id, string service, const map<string,string> &values ) {this->data(id,service,values);} },
+             { "end", [=]( int id, string service, const map<string,string> &values ) {this->end(id,service,values);} } };
+
         cout << "url:\t" << qry.url() << endl;
         cout << "-----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----" << endl;
         auto obs1 = create_subject( 2003, fetch_query, standard_vos[0], qry.url( ) );
         auto obs2 = create_subject( 2003, fetch_query, standard_vos[0], qry.url( ) );
         cout << ">>>H>>>E>>>R>>>E>>>" << endl;
-        rxcpp::from(obs1).merge(obs2).for_each( []( OBS val ) { cout << "\t" << get<2>(val) << endl; } );
+        rxcpp::from(obs1).merge(obs2).for_each( [&]( OBS val ) {
+                  cout << "\t" << get<0>(val) << endl;
+                  signals[get<0>(val)](get<1>(val),get<2>(val),get<3>(val));
+        } );
         // fetch_query( 2003, qry.url( ) );
         cout << "-----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----" << endl;
 

@@ -38,5 +38,25 @@
       <arg direction="in"  type="as" name="vos"/>
       <arg direction="out" type="i"/>
     </method>
+    <signal name="begin">
+      <arg type="i" name="id" />
+      <arg type="s" name="service" />
+      <arg type="a{ss}" name="values" />
+    </signal>
+    <signal name="description">
+      <arg type="i" name="id" />
+      <arg type="s" name="service" />
+      <arg type="a{ss}" name="values" />
+    </signal>
+    <signal name="data">
+      <arg type="i" name="id" />
+      <arg type="s" name="service" />
+      <arg type="a{ss}" name="values" />
+    </signal>
+    <signal name="end">
+      <arg type="i" name="id" />
+      <arg type="s" name="service" />
+      <arg type="a{ss}" name="values" />
+    </signal>
   </interface>
 </node>
