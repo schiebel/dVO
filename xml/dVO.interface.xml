@@ -1,4 +1,5 @@
 <?xml version="1.0" ?>
+<!-- with Qt generate with: qdbusxml2cpp  -v -c QtdVO -i "casaqt/QtUtilities/QtStringMap.h" -p QtdVO.h:QtdVO.cc dVO.interface.xml -->
 <node name="/casa/vo/sevice">
   <interface name="edu.nrao.casa.dVO">
     <method name="fetch">
@@ -28,6 +29,7 @@
                    vos: vector<string>      = vo servers to use
            output: int                      = observable id
         -->
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In6" value="QVariantMap"/>
       <arg direction="in"  type="d" name="ra"/>
       <arg direction="in"  type="d" name="dec"/>
       <arg direction="in"  type="d" name="ra_size"/>
@@ -39,21 +41,25 @@
       <arg direction="out" type="i"/>
     </method>
     <signal name="begin">
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In2" value="QtStringMap"/>
       <arg type="i" name="id" />
       <arg type="s" name="service" />
       <arg type="a{ss}" name="values" />
     </signal>
     <signal name="description">
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In2" value="QtStringMap"/>
       <arg type="i" name="id" />
       <arg type="s" name="service" />
       <arg type="a{ss}" name="values" />
     </signal>
     <signal name="data">
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In2" value="QtStringMap"/>
       <arg type="i" name="id" />
       <arg type="s" name="service" />
       <arg type="a{ss}" name="values" />
     </signal>
     <signal name="end">
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In2" value="QtStringMap"/>
       <arg type="i" name="id" />
       <arg type="s" name="service" />
       <arg type="a{ss}" name="values" />

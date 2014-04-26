@@ -2,8 +2,13 @@ AC_INIT([DBus VO Service],[0.0.1],[drs@nrao.edu],[dVO],[http://casa.nrao.edu/])
 AC_PREREQ([2.59])
 AC_CONFIG_MACRO_DIRS([m4])
 
+dnl setup cannonical host variables without requiring
+dnl install.sh et al. as AC_CANONICAL_HOST does
+AX_CANONICAL_SPLIT(host,`./config.guess`)
+
 AX_EXPAND_PATH($srcdir,root)
 AC_MSG_NOTICE([package root is $PKG_ROOT])
+AC_MSG_NOTICE([host os is ${host_os}])
 MODIFIEDPATH=$root/bin$PATH_SEPARATOR$PATH
 AC_MSG_NOTICE([path is $MODIFIEDPATH])
 
@@ -52,6 +57,14 @@ AX_PATH_XML2( [2.6.26], [
               CPPFLAGS="${CPPFLAGS} ${XML_CPPFLAGS}"
               LIBS="${LIBS} ${XML_LIBS}"],
               AC_MSG_ERROR([could not locate libxml2 installation]) )
+
+case $host_os in
+	darwin*|macosx*)
+		LDFLAGS="${LDFLAGS} -framework IOKit -framework CoreFoundation"
+		;;
+esac
+
+AC_SUBST(SYS_LIBS)
 
 AC_SUBST(DBUS_XML2CPP)
 AC_SUBST(TAR)

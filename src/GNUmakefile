@@ -16,8 +16,9 @@ all: dVO
 dvo_adaptor.o: $(INCPATH)/dvo/dVO.adaptor.hpp $(INCPATH)/dvo/adaptor.hpp $(INCPATH)/dvo/libxml2.hpp
 dvo_main.o: $(INCPATH)/dvo/dVO.adaptor.hpp $(INCPATH)/dvo/adaptor.hpp
 dvo_dal.o: $(INCPATH)/dvo/dal.hpp
+dvo_SysState.o: $(INCPATH)/dvo/SysState.hpp
 
-dVO: dvo_main.o dvo_adaptor.o dvo_dal.o $(OBJECTS)
+dVO: dvo_main.o dvo_adaptor.o dvo_dal.o dvo_SysState.o $(OBJECTS)
 	$(CXX) -o $@ $(LDFLAGS) $^ $(LIBS)
 
 clean:

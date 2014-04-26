@@ -1,4 +1,4 @@
-//# dvo_main.cpp:  main routine for the dVO DBus VO Client
+//# SysState.hpp: create observable of system states (sleep/wake)
 //# Copyright (C) 2014
 //# Associated Universities, Inc. Washington DC, USA.
 //#
@@ -23,44 +23,13 @@
 //#                        520 Edgemont Road
 //#                        Charlottesville, VA 22903-2475 USA
 //#
-#include <memory>
-#include <iostream>
-#include <libxml/xmlmemory.h>
-#include <libxml/parser.h>
-#include <dvo/adaptor.hpp>
-#include <dbus/dbus.h>
-#include <unistd.h>
-#include <signal.h>
 
-#include <dvo/SysState.hpp>
+#pragma once
+#include <rxcpp/rx.hpp>
 
-using std::cout;
-using std::endl;
-using dvo::SysState;
-using dvo::SysStateObservable;
+namespace dvo {
 
-int main( int argc, char *argv[] ) {
+	enum class SysState { MaySleep, WillSleep, WillPowerOn, HasPoweredOn };
+	std::shared_ptr<rxcpp::Observable<SysState>> SysStateObservable( rxcpp::Scheduler::shared scheduler = nullptr );
 
-    // make dbus thread aware...
-    dbus_threads_init_default( );
-    // ensure libxml2 headers/libraries match...
-    LIBXML_TEST_VERSION
-
-    auto adaptor = std::make_shared<dvo::adaptor>("dVO","/casa/dVO");
-
-	unsigned remaining_seconds;
-	auto sleepStream = SysStateObservable( );
-	rxcpp::from(sleepStream).
-		subscribe( [&](SysState e) {
-				switch(e) {
-				case SysState::WillSleep:
-					remaining_seconds = alarm(0);
-					break;
-				case SysState::HasPoweredOn:
-					alarm(remaining_seconds);
-					break;
-				} } );
-     
-    cout << "Hello World..." << endl;
-    casa::DBusSession::instance( ).dispatcher( ).enter( );
 }
