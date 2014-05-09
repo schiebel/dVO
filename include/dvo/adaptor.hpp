@@ -38,17 +38,32 @@ namespace dvo {
            public DBus::IntrospectableAdaptor,
            public DBus::ObjectAdaptor {
     public:
+		enum class Mode { normal, testing, logging };
+
         adaptor( std::string bus_name, std::string object_path );
         ~adaptor( );
-        virtual int32_t fetch(const std::vector< std::string >& urls, const bool& poll);
+        virtual int32_t fetch(const std::string &url, const std::string &output, const bool& progress);
         virtual std::vector< ::DBus::Variant > request(const int32_t& id);
         virtual int32_t query( const double& ra, const double& dec, const double& ra_size, const double& dec_size,
-                               const std::string& format, const bool& poll,
+                               const std::string& format,
                                const std::map< std::string, ::DBus::Variant >& params,
                                const std::vector< std::string >& vos );
+
+		// set the results for all queries and fetches to a constant result for testing and debugging...
+		void set_query_result( const std::string &query_file ) { query_result_file = query_file; }
+		void set_fetch_result( const std::string &fetch_file ) { fetch_result_file = fetch_file; }
+
+		void mode( Mode new_mode ) { mode_ = new_mode; }
+		Mode mode( ) const { return mode_; }
+
     private:
         // standard list of sites to query
         std::vector<std::string> standard_vos;
+		int32_t last_id;
+		// mode determines the treatment (input or output) for test/debugging files...
+		Mode mode_;
+		std::string query_result_file;
+		std::string fetch_result_file;
     };
 
 }

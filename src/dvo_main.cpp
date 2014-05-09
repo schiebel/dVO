@@ -28,16 +28,20 @@
 #include <libxml/xmlmemory.h>
 #include <libxml/parser.h>
 #include <dvo/adaptor.hpp>
+#include <dvo/util.hpp>
 #include <dbus/dbus.h>
 #include <unistd.h>
 #include <signal.h>
 
 #include <dvo/SysState.hpp>
 
+
 using std::cout;
+using std::cerr;
 using std::endl;
-using dvo::SysState;
-using dvo::SysStateObservable;
+using std::string;
+using std::make_shared;
+using namespace dvo;
 
 int main( int argc, char *argv[] ) {
 
@@ -46,17 +50,55 @@ int main( int argc, char *argv[] ) {
     // ensure libxml2 headers/libraries match...
     LIBXML_TEST_VERSION
 
-    auto adaptor = std::make_shared<dvo::adaptor>("dVO","/casa/dVO");
+	auto adaptor = make_shared<dvo::adaptor>("dVO","/casa/dVO");
 
-	unsigned remaining_seconds;
+	for ( int i=0; i < argc; ++i ) {
+		std::string arg {argv[i]};
+		{	std::string prefix = "--query-file=";
+			if ( arg.size( ) > prefix.size( ) && equal( prefix.begin( ), prefix.end( ), arg.begin( ) ) ) {
+				string query_file = arg.substr( prefix.size( ) );
+				if ( util::exists( query_file ) )
+					adaptor->set_query_result(query_file);
+				else
+					util::die( "could not read query test file: ", query_file );
+			}
+		}
+		{	std::string prefix = "--fetch-file=";
+			if ( arg.size( ) > prefix.size( ) && equal( prefix.begin( ), prefix.end( ), arg.begin( ) ) ) {
+				string fetch_file = arg.substr( prefix.size( ) );
+				if ( util::exists( fetch_file ) )
+					adaptor->set_fetch_result(fetch_file);
+				else
+					util::die( "could not read fetch test file: ", fetch_file );
+			}
+		}
+		{	std::string match = "--testing";
+			if ( arg.size( ) == match.size( ) && equal( match.begin( ), match.end( ), arg.begin( ) ) ) {
+				if ( adaptor->mode( ) == adaptor::Mode::logging )
+					util::die( "cannot use both --testing (reading from test files) and --logging (saving to test files)" );
+				adaptor->mode(adaptor::Mode::testing);
+			}
+		}
+		{	std::string match = "--logging";
+			if ( arg.size( ) == match.size( ) && equal( match.begin( ), match.end( ), arg.begin( ) ) ) {
+				if ( adaptor->mode( ) == adaptor::Mode::testing )
+					util::die( "cannot use both --testing (reading from test files) and --logging (saving to test files)" );
+				adaptor->mode(adaptor::Mode::logging);
+			}
+		}
+	}
+
+	unsigned remaining_seconds = 0;
 	auto sleepStream = SysStateObservable( );
 	rxcpp::from(sleepStream).
 		subscribe( [&](SysState e) {
 				switch(e) {
 				case SysState::WillSleep:
 					remaining_seconds = alarm(0);
+					cout << "start sleep: " << remaining_seconds << endl;
 					break;
 				case SysState::HasPoweredOn:
+					cout << "end sleep:   " << remaining_seconds << endl;
 					alarm(remaining_seconds);
 					break;
 				} } );

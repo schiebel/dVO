@@ -26,17 +26,20 @@
 #include <deque>
 #include <string>
 #include <numeric>
-#include <iostream>
 #include <string.h>
 #include <functional>
 #include <curl/curl.h>
 #include <dvo/dal.hpp>
+#include <dvo/util.hpp>
 #include <dvo/adaptor.hpp>
 #include <libxml/xmlmemory.h>
 #include <dvo/libxml2.hpp>
 #include <rxcpp/rx.hpp>
+#include <iostream>
+#include <fstream>
 
 using std::shared_ptr;
+using std::ifstream;
 using std::function;
 using std::vector;
 using std::string;
@@ -48,6 +51,7 @@ using std::get;
 using std::map;
 
 using OBS = tuple<string,int,string,map<string,string>>;
+using PROGRESS = tuple<string,int,string,string,double,double,double,double>;
 
 //
 // See <dvo/libxml2.hpp>...
@@ -56,31 +60,111 @@ constexpr unsigned long dvo::xml2::sax::meta[];
 
 namespace dvo {
 
-    using curlfunc_t = size_t (void *ptr,size_t,size_t);
+	namespace curl {
+		using write_t = size_t (void *ptr,size_t,size_t);
+		using progress_t = int ( double download_total, double download_total_size_done, double ultotal, double uldone );
+	}
 
     namespace pvt {
-        size_t curlfunc(void *ptr, size_t size, size_t nmemb, void *func) {
-            return (*static_cast<function<curlfunc_t>*>(func))(ptr,size,nmemb);
+        size_t curlwrite(void *ptr, size_t size, size_t nmemb, void *func) {
+            return (*static_cast<function<curl::write_t>*>(func))(ptr,size,nmemb);
         }
+
+		int curlprogress(void *func, double download_total_size, double download_total_size_done, double ultotal, double uldone) {
+            return (*static_cast<function<curl::progress_t>*>(func))( download_total_size, download_total_size_done, ultotal, uldone );
+        }
+
     }
 
-static shared_ptr<rxcpp::Observable<OBS>> create_subject( int id, function<void(int id, shared_ptr<rxcpp::Observer<OBS>>, string, string, rxcpp::Scheduler::shared )> func, string vo_service, string url, rxcpp::Scheduler::shared scheduler = nullptr ) {
+// query    ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------
+static shared_ptr<rxcpp::Observable<OBS>> create_subject( int id, function<void(int, shared_ptr<rxcpp::Observer<OBS>>, string, string, rxcpp::Scheduler::shared )> func, string vo_service, string url, rxcpp::Scheduler::shared scheduler = nullptr ) {
     if ( ! scheduler ) {
         scheduler = std::make_shared<rxcpp::EventLoopScheduler>( );
     }
+	fprintf( stderr, "\t\t\t<<1>>\n" );
     auto subject = rxcpp::CreateSubject<OBS>( );
     scheduler->Schedule( rxcpp::fix0([=](rxcpp::Scheduler::shared s, function<rxcpp::Disposable(rxcpp::Scheduler::shared)> self) -> rxcpp::Disposable {
+				fprintf( stderr, "\t\t\t<<2>>\n" );
                                  func( id, subject, vo_service, url, scheduler );
                                  return rxcpp::Disposable::Empty( );
                          }) );
     return subject;
 }
+// fetch    ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------
+	static shared_ptr<rxcpp::Observable<PROGRESS>> create_subject( int id, function<void(int, shared_ptr<rxcpp::Observer<PROGRESS>>, string, string, bool, rxcpp::Scheduler::shared )> func, string url, string output, bool progress, rxcpp::Scheduler::shared scheduler = nullptr ) {
+    if ( ! scheduler ) {
+        scheduler = std::make_shared<rxcpp::EventLoopScheduler>( );
+    }
+    auto subject = rxcpp::CreateSubject<PROGRESS>( );
+    scheduler->Schedule( rxcpp::fix0([=](rxcpp::Scheduler::shared s, function<rxcpp::Disposable(rxcpp::Scheduler::shared)> self) -> rxcpp::Disposable {
+                                 func( id, subject, url, output, progress, scheduler );
+                                 return rxcpp::Disposable::Empty( );
+                         }) );
+    return subject;
+}
 
-void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_service, string url, rxcpp::Scheduler::shared scheduler ) {
-        CURL *curl = curl_easy_init( );
-        curl_easy_setopt(curl,CURLOPT_URL,url.c_str( ));
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, pvt::curlfunc);
-        int count = 0;
+void process_fetch( int id, shared_ptr<rxcpp::Observer<PROGRESS>> obs, string url, string destination, bool post_progress, rxcpp::Scheduler::shared scheduler ) {
+	auto progress = function<curl::progress_t>(
+				   [&]( double download_total_size, double download_total_size_done, double ultotal, double uldone ) -> int {
+					   cout << "\t<<progress>>" << endl;
+						if ( post_progress || true ) {
+							obs->OnNext(PROGRESS( "progress", id, destination, "", download_total_size, download_total_size_done, ultotal, uldone ));
+						}
+						return 0;
+				   });
+
+    FILE *outfile = fopen( destination.c_str(), "w");
+	if ( ! outfile ) {
+		obs->OnNext(PROGRESS( "error", id, destination, "could not write to output location", 0, 0, 0, 0 ));
+		static auto excp = std::make_exception_ptr(std::runtime_error("could not write to output location"));
+		obs->OnError(excp);
+	}
+
+    char error[CURL_ERROR_SIZE];
+    memset(error, 0, CURL_ERROR_SIZE);
+
+	CURL *curlp = curl_easy_init( );
+
+	cout << "fetch url:\t" << url << endl;
+	cout << "fetch out:\t" << destination << endl;
+
+	curl_easy_setopt(curlp, CURLOPT_URL,               url.c_str());
+    curl_easy_setopt(curlp, CURLOPT_ERRORBUFFER,       error);
+
+	// progess stuff
+	curl_easy_setopt(curlp, CURLOPT_NOPROGRESS,        0);
+	curl_easy_setopt(curlp, CURLOPT_PROGRESSDATA,      &progress);
+	curl_easy_setopt(curlp, CURLOPT_PROGRESSFUNCTION,  pvt::curlprogress);
+	curl_easy_setopt(curlp, CURLOPT_WRITEDATA,         outfile);
+
+	// http related settings
+	curl_easy_setopt(curlp, CURLOPT_FOLLOWLOCATION,   1); // follow redirects
+	curl_easy_setopt(curlp, CURLOPT_AUTOREFERER,      1); // set the Referer: field in requests where it follows a Location: redirect.
+	curl_easy_setopt(curlp, CURLOPT_MAXREDIRS,        20);
+	curl_easy_setopt(curlp, CURLOPT_USERAGENT,        "DBus_VO_Service/1.0");
+	curl_easy_setopt(curlp, CURLOPT_FILETIME,         1);
+
+	CURLcode status = curl_easy_perform(curlp);
+	switch( status ) {
+	case CURLE_OK:
+		obs->OnNext(PROGRESS( "complete", id, destination, "", 0, 0, 0, 0 ));
+		obs->OnCompleted( );
+		break;
+	default:
+		{	// later we could expand this out to all options, see:
+			// http://curl.haxx.se/libcurl/c/libcurl-errors.html
+			obs->OnNext(PROGRESS( "error", id, destination, error, 0, 0, 0, 0 ));
+			static auto excp = std::make_exception_ptr(std::runtime_error(error));
+			obs->OnError(excp);
+		}
+		break;
+	};
+	curl_easy_cleanup(curlp);
+	fclose(outfile);
+
+}
+
+void process_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_service, string url, rxcpp::Scheduler::shared scheduler ) {
         xml2::sax sax;
         string type;
         deque<string> keys_pattern;
@@ -89,7 +173,10 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_servic
         bool collect_characters = false;
         bool inside_table = false;
         string characters;
+		string within_field = "";
 
+		fprintf( stderr, "\t\t\t<<3>>\n" );
+		// xmlStopParser(ctxt)
         sax.table.startElementNs =
             [&]( string name, string prefix, string uri, vector<tuple<string,string>> namespaces,
                  vector<tuple<string,string,string,string>> attributes ) {
@@ -106,6 +193,7 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_servic
                         // >>>>===>> push out "begin" observable
                         values["URL base"] = vo_service;
                         values["URL full"] = url;
+						fprintf( stderr, "\t\t\t<<4>>\n" );
                         obs->OnNext(OBS( type, id, vo_service, values ));
                         type = "description";
                         values.clear( );
@@ -121,7 +209,8 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_servic
                             else if ( get<0>(attr) == u8"arraysize" && get<3>(attr) != u8"*" ) size = get<3>(attr);
                         }
                         keys_pattern.push_back(key);
-                        values[key] = typ + "@" + units + "@" + size + "@" + desc;
+                        values[key] = typ + ":@:" + units + ":@:" + size + ":@:" + desc;
+						within_field = key;
                     }
                     else if ( name == u8"DATA" ) {
                         // >>>>===>> push out "description" observable
@@ -129,10 +218,11 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_servic
                         // "data" state is setup in <TR> and pushed out in </TR>...
                     }
                     else if ( name == u8"TABLEDATA" ) { inside_table = true; }
+					else if ( within_field.size( ) > 0 && name == u8"DESCRIPTION" ) { characters = ""; collect_characters = true;; }
         };
-                    
 
-        sax.table.endElementNs = 
+
+        sax.table.endElementNs =
             [&]( string name, string prefix, string uri) {
                     if ( name == u8"TABLEDATA" ) { inside_table = false; }
                     else if ( name == u8"RESOURCE" ) type = "end";
@@ -151,41 +241,113 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_servic
                         // >>>>===>> signal completion
                         obs->OnNext(OBS( "end", id, vo_service, map<string,string>( ) ));
                         obs->OnCompleted( );
-                    }
+                    } else if ( name == u8"DESCRIPTION" && collect_characters ) {
+						if ( within_field.size( ) > 0 ) {
+							values[within_field] += ":@:" + characters;
+						}
+						collect_characters = false;
+					}
             };
 
         sax.table.characters = [&]( string chars ) { if ( collect_characters ) characters += chars; };
 
-        sax.table.warning = [](string msg) { std::cout << "warning: " << msg << std::endl; };
-        sax.table.error = [](string msg) { std::cout << "error: " << msg << std::endl; };
+        sax.table.warning = [&](string msg) {
+			map<string,string> err;
+			err["msg"] = msg;
+			obs->OnNext(OBS( "warning", id, vo_service, err ));
+		};
+        sax.table.error = [&](string msg) {
+			map<string,string> err;
+			err["msg"] = msg;
+			/**************  These could be handled by observing functions...  **************/
+			obs->OnNext(OBS( "error", id, vo_service, err ));
+			obs->OnNext(OBS( "end", id, vo_service, map<string,string>( ) ));
+
+			/**************  OnError(...) terminates the Observable...         **************/
+			auto excp = std::make_exception_ptr(std::runtime_error(msg));
+			obs->OnError(excp);
+		};
 
         auto ctxt = xmlCreatePushParserCtxt( sax.handler( ), &sax, nullptr, 0, nullptr);
-        auto cb = function<curlfunc_t>(
-            [&](void *ptr, size_t size, size_t nmemb) -> size_t {
-                    ++count;
-                    xmlParseChunk(ctxt, (const char*) ptr, size*nmemb, 0);
-                    return size*nmemb;
-            });
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &cb);
-        curl_easy_perform(curl);
-        xmlFreeParserCtxt(ctxt);
-        curl_easy_cleanup(curl);
-        cout << ">>>===========>> " << count << endl;
+
+		if ( util::exists( url ) ) {
+			cout << "using local file " << url << endl;
+			ifstream input( url );
+			char buffer[1024];
+			while ( input.read(buffer,sizeof(buffer)) || input.gcount( ) != 0 ) {
+				if ( xmlParseChunk( ctxt, buffer, input.gcount( ), 0 ) ) {
+					xmlParserError( ctxt, "xmlParseChunk" );
+					break;
+				}
+			}
+		} else {
+			auto cb = function<curl::write_t>(
+				   [&](void *ptr, size_t size, size_t nmemb) -> size_t {
+	                    xmlParseChunk(ctxt, (const char*) ptr, size*nmemb, 0);
+						return size*nmemb;
+				   });
+			CURL *curl = curl_easy_init( );
+			curl_easy_setopt(curl, CURLOPT_URL, url.c_str( ));
+			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, pvt::curlwrite);
+			curl_easy_setopt(curl, CURLOPT_WRITEDATA, &cb);
+			curl_easy_perform(curl);
+			curl_easy_cleanup(curl);
+		}
+		xmlFreeParserCtxt(ctxt);
+
     }
 
     adaptor::adaptor( string bus_name, string object_path ) : casa::dbus::address(bus_name,false),
                                                                         DBus::ObjectAdaptor( casa::DBusSession::instance( ).connection( ), object_path ),
-                                                                        standard_vos{"http://vaosa-vm1.aoc.nrao.edu/ivoa-dal/siapv2"} { }
+																		standard_vos{ "http://vaosa-vm1.aoc.nrao.edu/ivoa-dal/siapv2"
+		/*****************************/
+		/* (1) "http://hla.stsci.edu/cgi-bin/hlaSIAP.cgi?imagetype=best&amp;inst=ACS,ACSGrism,WFC3,WFPC2,NICMOS,NICGRISM,COS,STIS,FOS,GHRS&amp;proprietary=false&amp;"  */
+		/*     Overflow: Format must be image/fits,application/tar,text/html for all-sky search. Large area searches (r > 45 deg) are limited to a single instrument. Use advanced search options to change selected instruments. */
+        /* (2) "http://hla.stsci.edu/cgi-bin/hlaSIAP.cgi?imagetype=best&amp;inst=NICMOS&amp;proprietary=false&amp;" */
+		/*     Overflow: Format must be image/fits,application/tar,text/html for all-sky search. */
+        /* (3) "http://hla.stsci.edu/cgi-bin/hlaSIAP.cgi?imagetype=image/fits&amp;inst=NICMOS&amp;proprietary=false&amp;" */
+		/*     Overflow: Format must be image/fits,application/tar,text/html for all-sky search. */
+        /* (4) "http://hla.stsci.edu/cgi-bin/hlaSIAP.cgi?imagetype=image/fits,application/tar,text/html&amp;inst=NICMOS&amp;proprietary=false&amp;" */
+        /*     Overflow: Format must be image/fits,application/tar,text/html for all-sky search. */
+		/* (1) http://irsa.ipac.caltech.edu/cgi-bin/Atlas/nph-atlas?mission=SWIRE&amp;hdr_location=%5CSWIREDataPath%5C&amp;collection_desc=The+Spitzer+Wide-area+InfraRed+Extragalactic+Survey+%28SWIRE%29&amp;SIAP_ACTIVE=1&amp;/sync?REQUEST=queryData&POS=180.000,0.000&SIZE=360.000,360.000" */
+		/*     No images or sources were found for location: 00h 42m 44.33s +41d 16m 08.5s Eq J2000 */
+
+		/* -------------------------------------------------------------------------------- */
+		/* "http://cda.harvard.edu/cxcsiap/queryImages?" */
+		/******************************/ }, last_id(0) { }
 
     adaptor::~adaptor( ) {
          /* signal: disconnect( ); */
     }
 
-    int32_t adaptor::fetch(const vector< string >& urls, const bool& poll) {
-        cout << "adaptor::fetch( [";
-        for ( auto v: urls ) cout << v << " ";
-        cout << "], " << poll << " )" << endl;
-        return 2001;
+   int32_t adaptor::fetch(const string& url, const string &output, const bool& progress) {
+		int32_t result = ++last_id;
+		string source;
+		if ( mode( ) == Mode::testing && util::exists( fetch_result_file ) ) {
+			// likely will need to improve this to convert fetch_result_file to a fully qualified path
+			source = "file://" + fetch_result_file;
+		} else {
+			source = url;
+		}
+
+		auto obs = create_subject( result, process_fetch, source, output, progress );
+        map<string,function<void(int,string,string,double,double,double,double)>> signals {
+            { "progress", [=]( int id, string path, string, double total, double done, double ultotal, double uldone) { fprintf( stderr, "*" ); this->fetch_progress(id,path,total,done,ultotal,uldone);} },
+			{ "complete", [=]( int id, string path, string, double, double, double, double ) {this->fetch_complete(id,path);} },
+			{ "error",    [=]( int id, string path, string err, double, double, double, double ) {this->fetch_error(id,path,err);} } };
+
+		try {
+			rxcpp::from(obs).for_each( [&]( PROGRESS val ) {
+					signals[get<0>(val)](get<1>(val),get<2>(val),get<3>(val),get<4>(val),get<5>(val),get<6>(val),get<7>(val));
+				} );
+		} catch(...) {
+			cout << "URL#2: " << url << endl;
+			fprintf( stderr, "-----  -----  -----  -----  -----  -----  caught exception  -----  -----  -----  -----  -----  -----\n" );
+		}
+
+		fprintf( stderr, ">>>>>>>>>>>------------------------->> HERE#1\n" );
+		fflush(stderr);
+        return result;
     }
     vector< ::DBus::Variant > adaptor::request(const int32_t& id) {
         cout << "adaptor::request( " << id << " )" << endl;
@@ -193,12 +355,12 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_servic
     }
     int32_t adaptor::query( const double& ra, const double& dec,
                             const double& ra_size, const double& dec_size,
-                            const string& format, const bool& poll,
+                            const string& format,
                             const map< string, ::DBus::Variant >& params,
                             const vector< string >& vos) {
 
         // set up the initial query parameters...
-        auto qry = dal::Query( standard_vos[0], ra, dec, ra_size, dec_size );
+		auto qry = dal::Query( standard_vos[0], ra, dec, ra_size, dec_size );
 
         // add in the extra query parameters...
         // query server ignores unknown/unexpected parameters...
@@ -222,23 +384,46 @@ void fetch_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_servic
                          } );
 
         map<string,function<void(int,string,const map<string,string>&)>> signals {
-             { "begin", [=]( int id, string service, const map<string,string> &values ) {this->begin(id,service,values);} },
-             { "description", [=]( int id, string service, const map<string,string> &values ) {this->description(id,service,values);} },
-             { "data", [=]( int id, string service, const map<string,string> &values ) {this->data(id,service,values);} },
-             { "end", [=]( int id, string service, const map<string,string> &values ) {this->end(id,service,values);} } };
+            { "begin", [=]( int id, string service, const map<string,string> &values ) {this->query_begin(id,service,values);} },
+			{ "description", [=]( int id, string service, const map<string,string> &values ) {this->query_description(id,service,values);} },
+			{ "data", [=]( int id, string service, const map<string,string> &values ) {this->query_data(id,service,values);} },
+			{ "end", [=]( int id, string service, const map<string,string> &values ) {this->query_end(id,service,values);} },
+			{ "warning", [=]( int id, string service, const map<string,string> &values ) {this->query_warning(id,service,values.at("msg"));} },
+			{ "error", [=]( int id, string service, const map<string,string> &values ) {this->query_error(id,service,values.at("msg"));} } };
 
-        cout << "url:\t" << qry.url() << endl;
-        cout << "-----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----" << endl;
-        auto obs1 = create_subject( 2003, fetch_query, standard_vos[0], qry.url( ) );
-        auto obs2 = create_subject( 2003, fetch_query, standard_vos[0], qry.url( ) );
-        cout << ">>>H>>>E>>>R>>>E>>>" << endl;
-        rxcpp::from(obs1).merge(obs2).for_each( [&]( OBS val ) {
-                  cout << "\t" << get<0>(val) << endl;
-                  signals[get<0>(val)](get<1>(val),get<2>(val),get<3>(val));
-        } );
-        // fetch_query( 2003, qry.url( ) );
-        cout << "-----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----  -----" << endl;
+		cout << "query url:\t" << qry.url() << endl;
+		// could run two queries each on a separate thread... (last_id should *ONLY* be incremented once...)
+		int32_t result = ++last_id;
 
-        return 2003;
+		auto obs1 = create_subject( result, process_query, standard_vos[0],
+									mode( ) == Mode::testing && util::exists( query_result_file ) ? query_result_file : qry.url( ) );
+
+// parallel queries...
+// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- -----
+//      auto obs2 = create_subject( ++last_id, process_query, standard_vos[0], qry.url( ) );
+        // rxcpp::from(obs1).merge(obs2).for_each( [&]( OBS val ) {
+        //           cout << "\t" << get<0>(val) << endl;
+        //           signals[get<0>(val)](get<1>(val),get<2>(val),get<3>(val));
+        // } );
+
+// parallel queries...
+// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- -----
+// waits for the new thread to exit.
+//      rxcpp::from(obs1).for_each( [&]( OBS val ) {
+//                signals[get<0>(val)](get<1>(val),get<2>(val),get<3>(val));
+//      } );
+        // process_query( ++last_id, qry.url( ) );
+		rxcpp::from(obs1).
+			// schedules the subscription on the thread that is consumed by curl/libxml2 (thus it hangs)
+			// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- -----
+			//			subscribe_on(scheduler).
+			subscribe( [=]( OBS val ) {
+					fprintf( stderr, "\t\t\t<<s>>\n" );
+					signals.at(get<0>(val))(get<1>(val),get<2>(val),get<3>(val));
+			} );
+		fprintf( stderr, ">>>>>>>>>>>------------------------->> HERE#2\n" );
+		fflush(stderr);
+
+        return result;
     }
 }
