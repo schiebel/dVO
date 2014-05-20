@@ -42,9 +42,19 @@ AC_DEFUN([AX_LIB_DBUS], [
                                          [ax_cv_lib_path_dbus="no"] )
                             if test "${ax_cv_lib_path_dbus}" != "no" -a \
                                     -d "${ax_cv_lib_path_dbus}/dbus-${version}.0/include" ; then
-                                ax_cv_lib_version_dbus="${version}"
-                                ax_cv_lib_include_path_dbus="${ax_cv_lib_path_dbus}/dbus-${version}.0/include"
-                                break
+							    if test "${ax_cv_static_link}" = yes; then
+									if test -e ${ax_cv_lib_path_dbus}/libdbus-${version}.a ; then
+										ax_cv_lib_version_dbus="${version}"
+										ax_cv_lib_include_path_dbus="${ax_cv_lib_path_dbus}/dbus-${version}.0/include"
+										break
+									else 
+										AC_MSG_NOTICE([skipping ${ax_cv_lib_path_dbus}, no static library])
+									fi
+								else
+									ax_cv_lib_version_dbus="${version}"
+									ax_cv_lib_include_path_dbus="${ax_cv_lib_path_dbus}/dbus-${version}.0/include"
+									break
+								fi
                             fi
                         fi
                     done
@@ -82,9 +92,13 @@ AC_DEFUN([AX_LIB_DBUS], [
     if test "${ax_cv_include_path_dbus}" != "no" -a \
             "${ax_cv_lib_include_path_dbus}" != "no" -a \
             "${ax_cv_lib_path_dbus}" != "no"; then
-        CPPFLAGS="$CPPFLAGS -I${ax_cv_lib_include_path_dbus} -I${ax_cv_include_path_dbus}"
-        LDFLAGS="${LDFLAGS} -L${ax_cv_lib_path_dbus}"
-        LIBS="${LIBS} -ldbus-${ax_cv_lib_version_dbus}"
+		CPPFLAGS="$CPPFLAGS -I${ax_cv_lib_include_path_dbus} -I${ax_cv_include_path_dbus}"
+		if test "${ax_cv_static_link}" = yes; then
+			LIBS="${LIBS} ${ax_cv_lib_path_dbus}/libdbus-${version}.a"
+		else
+			LDFLAGS="${LDFLAGS} -L${ax_cv_lib_path_dbus}"
+			LIBS="${LIBS} -ldbus-${ax_cv_lib_version_dbus}"
+		fi
     else
         AC_MSG_ERROR([could not identify DBus installation])
     fi

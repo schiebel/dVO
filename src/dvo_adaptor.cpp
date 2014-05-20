@@ -34,7 +34,6 @@
 #include <dvo/adaptor.hpp>
 #include <libxml/xmlmemory.h>
 #include <dvo/libxml2.hpp>
-#include <rxcpp/rx.hpp>
 #include <iostream>
 #include <fstream>
 
@@ -56,7 +55,6 @@ using PROGRESS = tuple<string,int,string,string,double,double,double,double>;
 //
 // See <dvo/libxml2.hpp>...
 constexpr unsigned long dvo::xml2::sax::meta[];
-
 
 namespace dvo {
 
@@ -81,10 +79,8 @@ static shared_ptr<rxcpp::Observable<OBS>> create_subject( int id, function<void(
     if ( ! scheduler ) {
         scheduler = std::make_shared<rxcpp::EventLoopScheduler>( );
     }
-	fprintf( stderr, "\t\t\t<<1>>\n" );
     auto subject = rxcpp::CreateSubject<OBS>( );
     scheduler->Schedule( rxcpp::fix0([=](rxcpp::Scheduler::shared s, function<rxcpp::Disposable(rxcpp::Scheduler::shared)> self) -> rxcpp::Disposable {
-				fprintf( stderr, "\t\t\t<<2>>\n" );
                                  func( id, subject, vo_service, url, scheduler );
                                  return rxcpp::Disposable::Empty( );
                          }) );
@@ -106,7 +102,6 @@ static shared_ptr<rxcpp::Observable<OBS>> create_subject( int id, function<void(
 void process_fetch( int id, shared_ptr<rxcpp::Observer<PROGRESS>> obs, string url, string destination, bool post_progress, rxcpp::Scheduler::shared scheduler ) {
 	auto progress = function<curl::progress_t>(
 				   [&]( double download_total_size, double download_total_size_done, double ultotal, double uldone ) -> int {
-					   cout << "\t<<progress>>" << endl;
 						if ( post_progress || true ) {
 							obs->OnNext(PROGRESS( "progress", id, destination, "", download_total_size, download_total_size_done, ultotal, uldone ));
 						}
@@ -124,9 +119,6 @@ void process_fetch( int id, shared_ptr<rxcpp::Observer<PROGRESS>> obs, string ur
     memset(error, 0, CURL_ERROR_SIZE);
 
 	CURL *curlp = curl_easy_init( );
-
-	cout << "fetch url:\t" << url << endl;
-	cout << "fetch out:\t" << destination << endl;
 
 	curl_easy_setopt(curlp, CURLOPT_URL,               url.c_str());
     curl_easy_setopt(curlp, CURLOPT_ERRORBUFFER,       error);
@@ -175,7 +167,6 @@ void process_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_serv
         string characters;
 		string within_field = "";
 
-		fprintf( stderr, "\t\t\t<<3>>\n" );
 		// xmlStopParser(ctxt)
         sax.table.startElementNs =
             [&]( string name, string prefix, string uri, vector<tuple<string,string>> namespaces,
@@ -193,7 +184,6 @@ void process_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_serv
                         // >>>>===>> push out "begin" observable
                         values["URL base"] = vo_service;
                         values["URL full"] = url;
-						fprintf( stderr, "\t\t\t<<4>>\n" );
                         obs->OnNext(OBS( type, id, vo_service, values ));
                         type = "description";
                         values.clear( );
@@ -299,7 +289,8 @@ void process_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_serv
 
     adaptor::adaptor( string bus_name, string object_path ) : casa::dbus::address(bus_name,false),
                                                                         DBus::ObjectAdaptor( casa::DBusSession::instance( ).connection( ), object_path ),
-																		standard_vos{ "http://vaosa-vm1.aoc.nrao.edu/ivoa-dal/siapv2"
+																		standard_vos{ "http://vaosa-vm1.aoc.nrao.edu/ivoa-dal/siapv2-vao"
+																		// standard_vos{ "http://vaosa-vm1.aoc.nrao.edu/ivoa-dal/siapv2"
 		/*****************************/
 		/* (1) "http://hla.stsci.edu/cgi-bin/hlaSIAP.cgi?imagetype=best&amp;inst=ACS,ACSGrism,WFC3,WFPC2,NICMOS,NICGRISM,COS,STIS,FOS,GHRS&amp;proprietary=false&amp;"  */
 		/*     Overflow: Format must be image/fits,application/tar,text/html for all-sky search. Large area searches (r > 45 deg) are limited to a single instrument. Use advanced search options to change selected instruments. */
@@ -330,29 +321,50 @@ void process_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_serv
 			source = url;
 		}
 
+		cout << "fetch url:\t" << source << endl;
+		cout << "fetch out:\t" << output << endl;
 		auto obs = create_subject( result, process_fetch, source, output, progress );
         map<string,function<void(int,string,string,double,double,double,double)>> signals {
-            { "progress", [=]( int id, string path, string, double total, double done, double ultotal, double uldone) { fprintf( stderr, "*" ); this->fetch_progress(id,path,total,done,ultotal,uldone);} },
+            { "progress", [=]( int id, string path, string, double total, double done, double ultotal, double uldone) { this->fetch_progress(id,path,total,done,ultotal,uldone);} },
 			{ "complete", [=]( int id, string path, string, double, double, double, double ) {this->fetch_complete(id,path);} },
 			{ "error",    [=]( int id, string path, string err, double, double, double, double ) {this->fetch_error(id,path,err);} } };
 
 		try {
-			rxcpp::from(obs).for_each( [&]( PROGRESS val ) {
-					signals[get<0>(val)](get<1>(val),get<2>(val),get<3>(val),get<4>(val),get<5>(val),get<6>(val),get<7>(val));
-				} );
+// parallel queries...
+// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- -----
+// waits for the new thread to exit.
+			// rxcpp::from(obs).for_each( [&]( PROGRESS val ) {
+			// 		signals[get<0>(val)](get<1>(val),get<2>(val),get<3>(val),get<4>(val),get<5>(val),get<6>(val),get<7>(val));
+			// 	} );
+			std::unique_lock<std::mutex> lock(pending_);
+			pending.emplace( std::make_pair( result,
+											 rxcpp::from(obs).subscribe(
+												// on next
+												[=]( PROGRESS val ) {
+													signals.at(get<0>(val))(get<1>(val),get<2>(val),get<3>(val),get<4>(val),get<5>(val),get<6>(val),get<7>(val));
+												},
+												// on complete
+												[&] {
+													std::unique_lock<std::mutex> lock(pending_);
+													auto it = pending.find(result);
+													if ( it != pending.end( ) ) pending.erase(it);
+												},
+												// on error
+												[&]( const std::exception_ptr &e ) {
+													std::unique_lock<std::mutex> lock(pending_);
+													auto it = pending.find(result);
+													if ( it != pending.end( ) ) pending.erase(it);
+												}
+											 ) )
+						   );
 		} catch(...) {
 			cout << "URL#2: " << url << endl;
 			fprintf( stderr, "-----  -----  -----  -----  -----  -----  caught exception  -----  -----  -----  -----  -----  -----\n" );
 		}
 
-		fprintf( stderr, ">>>>>>>>>>>------------------------->> HERE#1\n" );
-		fflush(stderr);
         return result;
     }
-    vector< ::DBus::Variant > adaptor::request(const int32_t& id) {
-        cout << "adaptor::request( " << id << " )" << endl;
-        return vector<::DBus::Variant>( );
-    }
+
     int32_t adaptor::query( const double& ra, const double& dec,
                             const double& ra_size, const double& dec_size,
                             const string& format,
@@ -360,7 +372,7 @@ void process_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_serv
                             const vector< string >& vos) {
 
         // set up the initial query parameters...
-		auto qry = dal::Query( standard_vos[0], ra, dec, ra_size, dec_size );
+		auto qry = dal::Query( vos.size( ) > 0 ? vos[0] : standard_vos[0], ra, dec, ra_size, dec_size, format );
 
         // add in the extra query parameters...
         // query server ignores unknown/unexpected parameters...
@@ -387,7 +399,7 @@ void process_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_serv
             { "begin", [=]( int id, string service, const map<string,string> &values ) {this->query_begin(id,service,values);} },
 			{ "description", [=]( int id, string service, const map<string,string> &values ) {this->query_description(id,service,values);} },
 			{ "data", [=]( int id, string service, const map<string,string> &values ) {this->query_data(id,service,values);} },
-			{ "end", [=]( int id, string service, const map<string,string> &values ) {this->query_end(id,service,values);} },
+				{ "end", [=]( int id, string service, const map<string,string> &values ) { this->query_end(id,service,values);} },
 			{ "warning", [=]( int id, string service, const map<string,string> &values ) {this->query_warning(id,service,values.at("msg"));} },
 			{ "error", [=]( int id, string service, const map<string,string> &values ) {this->query_error(id,service,values.at("msg"));} } };
 
@@ -413,17 +425,45 @@ void process_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_serv
 //                signals[get<0>(val)](get<1>(val),get<2>(val),get<3>(val));
 //      } );
         // process_query( ++last_id, qry.url( ) );
-		rxcpp::from(obs1).
-			// schedules the subscription on the thread that is consumed by curl/libxml2 (thus it hangs)
-			// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- -----
-			//			subscribe_on(scheduler).
-			subscribe( [=]( OBS val ) {
-					fprintf( stderr, "\t\t\t<<s>>\n" );
-					signals.at(get<0>(val))(get<1>(val),get<2>(val),get<3>(val));
-			} );
-		fprintf( stderr, ">>>>>>>>>>>------------------------->> HERE#2\n" );
-		fflush(stderr);
+		try {
+			std::unique_lock<std::mutex> lock(pending_);
+		// schedules the subscription on the thread that is consumed by curl/libxml2 (thus it hangs)
+		// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- -----
+		//		rxcpp::from(obs1).subscribe_on(scheduler).
+			pending.emplace( std::make_pair( result,
+											 rxcpp::from(obs1).subscribe(
+												// on next
+												[=]( OBS val ) {
+													signals.at(get<0>(val))(get<1>(val),get<2>(val),get<3>(val));
+												},
+												// on complete
+												[&] {
+													std::unique_lock<std::mutex> lock(pending_);
+													auto it = pending.find(result);
+													if ( it != pending.end( ) ) pending.erase(it);
+												},
+												// on error
+												[&]( const std::exception_ptr &e ) {
+													std::unique_lock<std::mutex> lock(pending_);
+													auto it = pending.find(result);
+													if ( it != pending.end( ) ) pending.erase(it);
+												}
+											 ) )
+						   );
+		} catch(...) {
+			cout << "QUERY: " << endl;
+			fprintf( stderr, "-----  -----  -----  -----  -----  -----  caught exception  -----  -----  -----  -----  -----  -----\n" );
+		}
 
         return result;
     }
+
+	void adaptor::cancel( const int32_t &id ) {
+		std::unique_lock<std::mutex> lock(pending_);
+		auto it = pending.find(id);
+		if ( it != pending.end( ) ) {
+			it->second.Dispose( );
+			pending.erase(it);
+		}
+	}
 }

@@ -103,6 +103,5 @@ int main( int argc, char *argv[] ) {
 					break;
 				} } );
      
-    cout << "Hello World..." << endl;
     casa::DBusSession::instance( ).dispatcher( ).enter( );
 }

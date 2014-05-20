@@ -1,0 +1,130 @@
+#!/usr/bin/perl
+#
+# LICENSE
+#
+#   Copyright (C) 2014 Associated Universities, Inc. Washington DC, USA.
+#
+#   Copying and distribution of this file, with or without modification, are
+#   permitted in any medium without royalty provided the copyright notice
+#   and this notice are preserved. This file is offered as-is, without any
+#   warranty.
+
+$uname = `uname -a`;
+$osx = $uname =~ m@darwin@i;
+$linux =  $uname =~ m@linux@i;
+
+$so = "";
+if ( osx ) {
+    $so = "dylib";
+	$ldd = "otool -L";
+	$regex = '(?:\.\d+)*\.dylib';
+} else {
+    $so = "so";
+    $ldd = "ldd";
+}
+@flags = ( );
+@libs = ( );
+@expanded = ( );
+%expanded = ( );
+@paths = ( );
+%paths = ( );
+%solibs = { };
+##
+##  split up curl-config options...
+##
+sub process {
+	my $_ = shift(@_);
+	foreach ( split(/\s+/) ) {
+		m@^-l(\S+)@ && ( push( @libs, $1 ), next );
+		m@^/\S+@ && ( push( @expanded, $_ ), next );
+		if ( m@^-L(\S+)@ ) {
+			if ( ! defined $paths{$1} ) {
+				push( @paths, $1 );
+				$paths{$1} = 1;
+				next;
+			}
+		}
+    }
+}
+
+foreach ( @ARGV ) {	process($_); }
+if ( ! -t STDIN ) {
+	foreach ( <STDIN> ) { process($_); }
+}
+
+##
+##  add system paths...
+##
+foreach ( "/usr/lib", "/usr/lib64" ) {
+	if ( ! defined $paths{$_} ) {
+		push( @paths, $_ );
+		$paths{$_} = 1;
+	}
+}
+
+@secondary_libs = ( );
+foreach $lib ( @libs ) {
+	my $found="no";
+	foreach $dir ( @paths ) {
+		my $static = "$dir/lib$lib.a";
+	    if ( -e $static ) {
+			$expanded{$static} = 1;
+            push( @expanded, $static );
+			if ( -e "$dir/lib$lib.$so" ) {
+				##  check shared version of discovered libraries...
+				push( @secondary_libs, "$dir/lib$lib.$so" );
+			}
+			$found = "yes";
+			last;
+        }
+	}
+	if ( $found eq "no" ) {
+		foreach $dir ( @paths ) {
+			if ( -e "$dir/lib$lib.dylib" ) {
+				push( @flags, "-L$dir" );
+				push( @expanded, "-l$lib" );
+			}
+		}
+	}
+}
+
+##
+##  mix in libraries discovered as dependencies...
+##
+%secondary_libs = ( );
+foreach $lib ( @secondary_libs ) {
+	if ( -e $lib ) {
+		open( LDD, "$ldd $lib |" );
+		foreach ( <LDD> ) {
+			s|\n||g;
+			s|^\s+||;
+			if ( m|$lib| ) { next; }
+			if ( m|(^\S+)| && -e $1 ) {
+				my $static = $1;
+				if ( $static =~ m|$regex| ) {
+					$static =~ s|$regex|.a|;
+					if ( ! defined $expanded{$static} && -e $static ) {
+						$secondary_libs{$static} = 1;
+					}
+				} else {
+					###
+					###   OSX includes some frameworks which must be
+					###   dynamically linked...
+					###
+					if ( $static =~ m|CoreFoundation| ) {
+						push( @expanded, "-framework CoreFoundation" );
+					}
+				}
+			}
+		}
+		close( LDD );
+	}
+}
+
+##
+##  join pieces...
+##
+$result = join( ' ', @flags ) . (scalar(@flags) > 0 ? " " : "");
+$result .= join(' ', @expanded) . (scalar(@expanded) > 0 ? " " : "");
+$result .= join(' ', keys %secondary_libs);
+print "$result\n";

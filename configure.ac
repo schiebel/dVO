@@ -4,7 +4,17 @@ AC_CONFIG_MACRO_DIRS([m4])
 
 dnl setup cannonical host variables without requiring
 dnl install.sh et al. as AC_CANONICAL_HOST does
-AX_CANONICAL_SPLIT(host,`./config.guess`)
+AX_CANONICAL_SPLIT(host,`./scripts/config.guess`)
+
+dnl enable compiling static binaries (sans system libraries)
+AC_CACHE_VAL(  [ax_cv_static_link], [
+			   AC_ARG_ENABLE( [static],
+			   				  AS_HELP_STRING([--enable-static],[link binaries against static libraries, when possible]),
+							  [ax_cv_static_link="${enableval}"], [ax_cv_static_link=no] )
+] )
+if test "${ax_cv_static_link}" = yes ; then
+   AC_MSG_NOTICE([will attempt to link against static libraries])
+fi
 
 AX_EXPAND_PATH($srcdir,root)
 AC_MSG_NOTICE([package root is $PKG_ROOT])
@@ -44,10 +54,12 @@ dnl AC_PROG_MKDIR_P
 AX_PROG_MKDIR_P([MKDIR])
 
 AX_LIB_DBUS
+AC_MSG_NOTICE([static dbus library: ${ax_cv_static_lib_path_dbus}])
 LIBCURL_CHECK_CONFIG( [yes],[7.15.5],[
                       CPPFLAGS="${CPPFLAGS} ${LIBCURL_CPPFLAGS}"
-                      LDFLAGS="${LDFLAGS} ${LIBCURL}"],
-                      AC_MSG_ERROR([could not locate libcurl installation]) )
+                      LIBS="${LIBS} ${LIBCURL}"],
+                      AC_MSG_ERROR([could not locate libcurl installation]),
+					  ./scripts/static.expand )
 dnl AX_CHECK_LIBXML2( [2.6.26], [
 dnl                       CPPFLAGS="${CPPFLAGS} ${LIBXML2_CPPFLAGS}"
 dnl                       LDFLAGS="${LDFLAGS} ${LIBXML2_LDFLAGS}"
@@ -56,11 +68,12 @@ dnl                       AC_MSG_ERROR([could not locate libxml2 installation]) 
 AX_PATH_XML2( [2.6.26], [
               CPPFLAGS="${CPPFLAGS} ${XML_CPPFLAGS}"
               LIBS="${LIBS} ${XML_LIBS}"],
-              AC_MSG_ERROR([could not locate libxml2 installation]) )
+              AC_MSG_ERROR([could not locate libxml2 installation]),
+              ./scripts/static.expand )
 
 case $host_os in
 	darwin*|macosx*)
-		LDFLAGS="${LDFLAGS} -framework IOKit -framework CoreFoundation"
+		LIBS="${LIBS} -framework IOKit -framework CoreFoundation"
 		;;
 esac
 

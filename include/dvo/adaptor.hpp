@@ -29,6 +29,8 @@
 #include <casadbus/utilities/BusAccess.h>
 #include <casadbus/session/DBusSession.h>
 #include <dbus-cpp/dbus.h>
+#include <rxcpp/rx.hpp>
+#include <mutex>
 
 namespace dvo {
 
@@ -42,8 +44,8 @@ namespace dvo {
 
         adaptor( std::string bus_name, std::string object_path );
         ~adaptor( );
+		virtual void cancel(const int32_t &id);
         virtual int32_t fetch(const std::string &url, const std::string &output, const bool& progress);
-        virtual std::vector< ::DBus::Variant > request(const int32_t& id);
         virtual int32_t query( const double& ra, const double& dec, const double& ra_size, const double& dec_size,
                                const std::string& format,
                                const std::map< std::string, ::DBus::Variant >& params,
@@ -64,6 +66,9 @@ namespace dvo {
 		Mode mode_;
 		std::string query_result_file;
 		std::string fetch_result_file;
+
+		std::mutex                      pending_;
+		std::map<int,rxcpp::Disposable> pending;
     };
 
 }
