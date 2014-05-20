@@ -87,7 +87,7 @@ static shared_ptr<rxcpp::Observable<OBS>> create_subject( int id, function<void(
     return subject;
 }
 // fetch    ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------ ------
-	static shared_ptr<rxcpp::Observable<PROGRESS>> create_subject( int id, function<void(int, shared_ptr<rxcpp::Observer<PROGRESS>>, string, string, bool, rxcpp::Scheduler::shared )> func, string url, string output, bool progress, rxcpp::Scheduler::shared scheduler = nullptr ) {
+static shared_ptr<rxcpp::Observable<PROGRESS>> create_subject( int id, function<void(int, shared_ptr<rxcpp::Observer<PROGRESS>>, string, string, bool, rxcpp::Scheduler::shared )> func, string url, string output, bool progress, rxcpp::Scheduler::shared scheduler = nullptr ) {
     if ( ! scheduler ) {
         scheduler = std::make_shared<rxcpp::EventLoopScheduler>( );
     }
@@ -330,12 +330,7 @@ void process_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_serv
 			{ "error",    [=]( int id, string path, string err, double, double, double, double ) {this->fetch_error(id,path,err);} } };
 
 		try {
-// parallel queries...
-// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- -----
-// waits for the new thread to exit.
-			// rxcpp::from(obs).for_each( [&]( PROGRESS val ) {
-			// 		signals[get<0>(val)](get<1>(val),get<2>(val),get<3>(val),get<4>(val),get<5>(val),get<6>(val),get<7>(val));
-			// 	} );
+
 			std::unique_lock<std::mutex> lock(pending_);
 			pending.emplace( std::make_pair( result,
 											 rxcpp::from(obs).subscribe(
@@ -410,26 +405,8 @@ void process_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_serv
 		auto obs1 = create_subject( result, process_query, standard_vos[0],
 									mode( ) == Mode::testing && util::exists( query_result_file ) ? query_result_file : qry.url( ) );
 
-// parallel queries...
-// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- -----
-//      auto obs2 = create_subject( ++last_id, process_query, standard_vos[0], qry.url( ) );
-        // rxcpp::from(obs1).merge(obs2).for_each( [&]( OBS val ) {
-        //           cout << "\t" << get<0>(val) << endl;
-        //           signals[get<0>(val)](get<1>(val),get<2>(val),get<3>(val));
-        // } );
-
-// parallel queries...
-// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- -----
-// waits for the new thread to exit.
-//      rxcpp::from(obs1).for_each( [&]( OBS val ) {
-//                signals[get<0>(val)](get<1>(val),get<2>(val),get<3>(val));
-//      } );
-        // process_query( ++last_id, qry.url( ) );
 		try {
 			std::unique_lock<std::mutex> lock(pending_);
-		// schedules the subscription on the thread that is consumed by curl/libxml2 (thus it hangs)
-		// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- -----
-		//		rxcpp::from(obs1).subscribe_on(scheduler).
 			pending.emplace( std::make_pair( result,
 											 rxcpp::from(obs1).subscribe(
 												// on next

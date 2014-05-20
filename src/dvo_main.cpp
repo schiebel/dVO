@@ -33,8 +33,6 @@
 #include <unistd.h>
 #include <signal.h>
 
-#include <dvo/SysState.hpp>
-
 
 using std::cout;
 using std::cerr;
@@ -88,20 +86,5 @@ int main( int argc, char *argv[] ) {
 		}
 	}
 
-	unsigned remaining_seconds = 0;
-	auto sleepStream = SysStateObservable( );
-	rxcpp::from(sleepStream).
-		subscribe( [&](SysState e) {
-				switch(e) {
-				case SysState::WillSleep:
-					remaining_seconds = alarm(0);
-					cout << "start sleep: " << remaining_seconds << endl;
-					break;
-				case SysState::HasPoweredOn:
-					cout << "end sleep:   " << remaining_seconds << endl;
-					alarm(remaining_seconds);
-					break;
-				} } );
-     
     casa::DBusSession::instance( ).dispatcher( ).enter( );
 }
