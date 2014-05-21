@@ -150,7 +150,7 @@ void process_fetch( int id, shared_ptr<rxcpp::Observer<PROGRESS>> obs, string ur
 			obs->OnError(excp);
 		}
 		break;
-	};
+	}
 	curl_easy_cleanup(curlp);
 	fclose(outfile);
 
@@ -276,11 +276,25 @@ void process_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_serv
 	                    xmlParseChunk(ctxt, (const char*) ptr, size*nmemb, 0);
 						return size*nmemb;
 				   });
+
+			char error[CURL_ERROR_SIZE];
+			memset(error, 0, CURL_ERROR_SIZE);
+
 			CURL *curl = curl_easy_init( );
 			curl_easy_setopt(curl, CURLOPT_URL, url.c_str( ));
+			curl_easy_setopt(curl, CURLOPT_ERRORBUFFER,       error);
 			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, pvt::curlwrite);
 			curl_easy_setopt(curl, CURLOPT_WRITEDATA, &cb);
-			curl_easy_perform(curl);
+			auto status = curl_easy_perform(curl);
+			if ( status != CURLE_OK ) {
+				// later we could expand this out to all options, see:
+				// http://curl.haxx.se/libcurl/c/libcurl-errors.html
+				map<string,string> err;
+				err["msg"] = error;
+				obs->OnNext(OBS( "error", id, vo_service, err ));
+				static auto excp = std::make_exception_ptr(std::runtime_error(error));
+				obs->OnError(excp);
+			}
 			curl_easy_cleanup(curl);
 		}
 		xmlFreeParserCtxt(ctxt);
@@ -367,7 +381,8 @@ void process_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_serv
                             const vector< string >& vos) {
 
         // set up the initial query parameters...
-		auto qry = dal::Query( vos.size( ) > 0 ? vos[0] : standard_vos[0], ra, dec, ra_size, dec_size, format );
+		auto service = vos.size( ) > 0 ? vos[0] : standard_vos[0];
+		auto qry = dal::Query( service, ra, dec, ra_size, dec_size, format );
 
         // add in the extra query parameters...
         // query server ignores unknown/unexpected parameters...
@@ -394,7 +409,7 @@ void process_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_serv
             { "begin", [=]( int id, string service, const map<string,string> &values ) {this->query_begin(id,service,values);} },
 			{ "description", [=]( int id, string service, const map<string,string> &values ) {this->query_description(id,service,values);} },
 			{ "data", [=]( int id, string service, const map<string,string> &values ) {this->query_data(id,service,values);} },
-				{ "end", [=]( int id, string service, const map<string,string> &values ) { this->query_end(id,service,values);} },
+			{ "end", [=]( int id, string service, const map<string,string> &values ) { this->query_end(id,service,values);} },
 			{ "warning", [=]( int id, string service, const map<string,string> &values ) {this->query_warning(id,service,values.at("msg"));} },
 			{ "error", [=]( int id, string service, const map<string,string> &values ) {this->query_error(id,service,values.at("msg"));} } };
 
@@ -402,7 +417,7 @@ void process_query( int id, shared_ptr<rxcpp::Observer<OBS>> obs, string vo_serv
 		// could run two queries each on a separate thread... (last_id should *ONLY* be incremented once...)
 		int32_t result = ++last_id;
 
-		auto obs1 = create_subject( result, process_query, standard_vos[0],
+		auto obs1 = create_subject( result, process_query, service,
 									mode( ) == Mode::testing && util::exists( query_result_file ) ? query_result_file : qry.url( ) );
 
 		try {
