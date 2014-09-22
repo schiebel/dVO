@@ -43,17 +43,25 @@ AC_ARG_ENABLE(xmltest,
   if test "$XML2_CONFIG" = "no" ; then
     no_xml=yes
   else
-    XML_CPPFLAGS=`$XML2_CONFIG $xml_config_args --cflags`
+### with xml2-config --prefix returns the install prefix! It can't
+### be used in conjunction with other flags... like --cflags...
+### XML_CPPFLAGS=`$XML2_CONFIG $xml_config_args --cflags`
+    XML_CPPFLAGS=`$XML2_CONFIG --cflags`
     if test "${ax_cv_static_link}" = yes; then
-        XML_LIBS=ifelse([$4],,`$XML2_CONFIG $xml_config_args --libs`,`$XML2_CONFIG $xml_config_args --libs | $4`)
+###     XML_LIBS=ifelse([$4],,`$XML2_CONFIG $xml_config_args --libs`,`$XML2_CONFIG $xml_config_args --libs | $4`)
+        XML_LIBS=ifelse([$4],,`$XML2_CONFIG --libs`,`$XML2_CONFIG --libs | $4`)
     else
-        XML_LIBS=`$XML2_CONFIG $xml_config_args --libs`
+###     XML_LIBS=`$XML2_CONFIG $xml_config_args --libs`
+        XML_LIBS=`$XML2_CONFIG --libs`
     fi
-    xml_config_major_version=`$XML2_CONFIG $xml_config_args --version | \
+### xml_config_major_version=`$XML2_CONFIG $xml_config_args --version | \
+    xml_config_major_version=`$XML2_CONFIG --version | \
            sed 's/\([[0-9]]*\).\([[0-9]]*\).\([[0-9]]*\)/\1/'`
-    xml_config_minor_version=`$XML2_CONFIG $xml_config_args --version | \
+### xml_config_minor_version=`$XML2_CONFIG $xml_config_args --version | \
+    xml_config_minor_version=`$XML2_CONFIG --version | \
            sed 's/\([[0-9]]*\).\([[0-9]]*\).\([[0-9]]*\)/\2/'`
-    xml_config_micro_version=`$XML2_CONFIG $xml_config_args --version | \
+### xml_config_micro_version=`$XML2_CONFIG $xml_config_args --version | \
+    xml_config_micro_version=`$XML2_CONFIG --version | \
            sed 's/\([[0-9]]*\).\([[0-9]]*\).\([[0-9]]*\)/\3/'`
     if test "x$enable_xmltest" = "xyes" ; then
       ac_save_CPPFLAGS="$CPPFLAGS"

@@ -27,7 +27,7 @@ AC_DEFUN([AX_LIB_DBUS], [
                 orig_LIBS="${LIBS}"
                 for version in 1; do
                     LIBS="${orig_LIBS} -ldbus-${version}"
-                    for dir in $dbus_libdir /lib64 /usr/lib64 /lib /usr/lib /opt/local/lib64 /usr/local/lib64 /opt/local/lib /usr/local/lib ; do
+                    for dir in $dbus_libdir /lib64 /usr/lib64 /lib /usr/lib /opt/local/lib64 /usr/local/lib64 /opt/local/lib /usr/local/lib `ls -d /opt/casa/*/lib 2> /dev/null | sort` ; do
                         if test -d "${dir}"; then
                             if test -z "${dir}"; then
                                 LDFLAGS="${orig_LDFLAGS}"
@@ -74,7 +74,7 @@ AC_DEFUN([AX_LIB_DBUS], [
 
     AC_CACHE_CHECK( [for DBus include path], ax_cv_include_path_dbus, [
         orig_CPPFLAGS="${CPPFLAGS}"
-        for dir in $dbus_incdir /usr/include /opt/local/include /usr/local/include ; do
+        for dir in $dbus_incdir /usr/include /opt/local/include /usr/local/include `ls -d /opt/casa/*/include 2> /dev/null | sort` ; do
             incdir="${dir}/dbus-${ax_cv_lib_version_dbus}.0"
             if test -d "${incdir}"; then
                 CPPFLAGS="${orig_LDFLAGS} -I${ax_cv_lib_include_path_dbus} -I${incdir}"
